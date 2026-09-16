@@ -304,3 +304,4 @@ Roles resolve from the Auth JWT (`app_metadata.role`); the Edge Function keeps
 - [TODO.md](./TODO.md) — build checklist
 - [docs/LEADS_CSV.md](./docs/LEADS_CSV.md) — Leads CSV import/export format
 
+
