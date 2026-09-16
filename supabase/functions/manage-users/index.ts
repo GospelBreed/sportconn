@@ -1,9 +1,9 @@
-// Roseway CRM — manage-users Edge Function
+// Sportconn CRM — manage-users Edge Function
 //
 // The ONLY place privileged auth operations run. Holds the service-role key
 // server-side (env), verifies the caller's JWT resolves to a `super_admin`, then
 // performs: create user · set role · enable/disable · delete. Every action is
-// written to roseway.audit_log.
+// written to sportconn.audit_log.
 //
 // Deploy:
 //   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
@@ -17,7 +17,18 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-const ROLES = ["super_admin", "admin", "case_manager", "read_only"] as const;
+const ROLES = [
+  "super_admin",
+  "admin",
+  "management",
+  "business_development",
+  "sales",
+  "partnerships",
+  "investor_relations",
+  "marketing",
+  "community_manager",
+  "viewer",
+] as const;
 type Role = (typeof ROLES)[number];
 
 const CORS = {
@@ -55,7 +66,7 @@ Deno.serve(async (req) => {
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
-    const db = admin.schema("roseway");
+    const db = admin.schema("sportconn");
     const body = await req.json().catch(() => ({}));
     const action = String(body.action ?? "");
 
@@ -101,7 +112,7 @@ Deno.serve(async (req) => {
       });
       if (error) return json({ error: error.message }, 400);
 
-      // the handle_new_user trigger inserts roseway.users; make sure it agrees
+      // the handle_new_user trigger inserts sportconn.users; make sure it agrees
       await db.from("users").update({ role, full_name }).eq("id", data.user.id);
       await audit("user.create", data.user.id, email, { role });
       return json({ ok: true, user: { id: data.user.id, email, role } });

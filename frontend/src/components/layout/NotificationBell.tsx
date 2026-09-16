@@ -11,14 +11,16 @@ import {
 } from "@/hooks/queries";
 import type { AppNotification } from "@/types";
 
-const ICON: Record<AppNotification["type"], "clock" | "folder" | "flag" | "alert" | "residents" | "check"> = {
+const ICON: Record<AppNotification["type"], "clock" | "folder" | "flag" | "alert" | "person" | "check"> = {
   follow_up_due: "clock",
   follow_up_overdue: "alert",
-  case_assigned: "folder",
   stage_change: "flag",
-  lead_assigned: "residents",
+  lead_assigned: "person",
   task_assigned: "check",
   task_due: "clock",
+  task_overdue: "alert",
+  deal_won: "check",
+  deal_lost: "flag",
 };
 
 export function NotificationBell() {
@@ -34,10 +36,10 @@ export function NotificationBell() {
   const onRow = (n: AppNotification) => {
     if (!n.read_at) markRead.mutate(n.id);
     setOpen(false);
-    if (n.case_id) navigate(`/cases?case=${n.case_id}`);
-    else if (n.resident_id) navigate(`/residents?focus=${n.resident_id}`);
-    else if (n.type === "lead_assigned") navigate("/leads");
-    else if (n.type === "task_assigned" || n.type === "task_due") navigate("/tasks");
+    if (n.lead_id) navigate(`/leads?focus=${n.lead_id}`);
+    else if (n.facility_id) navigate(`/facilities/${n.facility_id}`);
+    else if (n.captain_id) navigate(`/captains?focus=${n.captain_id}`);
+    else if (n.type === "task_assigned" || n.type === "task_due" || n.type === "task_overdue") navigate("/tasks");
   };
 
   return (

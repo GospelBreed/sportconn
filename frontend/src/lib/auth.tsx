@@ -30,8 +30,11 @@ function deriveUser(session: Session | null): AppUser | null {
   const appMeta = (u.app_metadata ?? {}) as Record<string, unknown>;
   const userMeta = (u.user_metadata ?? {}) as Record<string, unknown>;
   const raw = appMeta.role;
-  const role: UserRole =
-    raw === "super_admin" || raw === "admin" || raw === "read_only" ? raw : "case_manager";
+  const KNOWN_ROLES: UserRole[] = [
+    "super_admin","admin","management","business_development","sales",
+    "partnerships","investor_relations","marketing","community_manager","viewer",
+  ];
+  const role: UserRole = KNOWN_ROLES.includes(raw as UserRole) ? (raw as UserRole) : "business_development";
   return {
     id: u.id,
     email: u.email ?? "",
@@ -66,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       user,
-      role: user?.role ?? "case_manager",
+      role: user?.role ?? "business_development",
       loading,
       signIn: async (email, password) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -99,6 +102,17 @@ const ALL_NAV = Object.fromEntries(NAV_KEYS.map((k) => [k, true])) as Record<Nav
 
 type EffPerms = Omit<RolePermissions, "role" | "updated_at" | "updated_by">;
 
+const STAFF_DEFAULT: EffPerms = {
+  can_manage_users: false,
+  can_edit_permissions: false,
+  can_manage_staff: false,
+  can_write: true,
+  can_delete: false,
+  can_export: true,
+  can_import: true,
+  nav: ALL_NAV,
+};
+
 export const PERMISSION_DEFAULTS: Record<UserRole, EffPerms> = {
   super_admin: {
     can_manage_users: true,
@@ -120,17 +134,14 @@ export const PERMISSION_DEFAULTS: Record<UserRole, EffPerms> = {
     can_import: true,
     nav: ALL_NAV,
   },
-  case_manager: {
-    can_manage_users: false,
-    can_edit_permissions: false,
-    can_manage_staff: false,
-    can_write: true,
-    can_delete: false,
-    can_export: true,
-    can_import: true,
-    nav: ALL_NAV,
-  },
-  read_only: {
+  management: STAFF_DEFAULT,
+  business_development: STAFF_DEFAULT,
+  sales: STAFF_DEFAULT,
+  partnerships: STAFF_DEFAULT,
+  investor_relations: STAFF_DEFAULT,
+  marketing: STAFF_DEFAULT,
+  community_manager: STAFF_DEFAULT,
+  viewer: {
     can_manage_users: false,
     can_edit_permissions: false,
     can_manage_staff: false,
@@ -182,7 +193,7 @@ export function useRole() {
     role,
     isSuperAdmin: role === "super_admin",
     isAdmin: role === "admin" || role === "super_admin",
-    isReadOnly: role === "read_only",
+    isReadOnly: role === "viewer",
     canWrite: eff.can_write,
     canDelete: eff.can_delete,
     canExport: eff.can_export,

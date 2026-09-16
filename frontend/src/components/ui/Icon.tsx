@@ -2,7 +2,7 @@ import type { SVGProps } from "react";
 
 export type IconName =
   | "board"
-  | "residents"
+  | "person"
   | "properties"
   | "analytics"
   | "followups"
@@ -45,7 +45,7 @@ export type IconName =
 
 const PATHS: Record<IconName, string> = {
   board: "M4 4h6v16H4zM14 4h6v10h-6z",
-  residents: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1",
+  person: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1",
   properties: "M3 21V8l6-4 6 4v13M9 21v-5h2v5M4 21h16M15 12h4v9",
   analytics: "M4 19V5M4 19h16M8 16v-5M12 16V8M16 16v-3M20 16v-7",
   followups: "M12 8v5l3 2M21 12a9 9 0 11-18 0 9 9 0 0118 0z",

@@ -5,13 +5,15 @@ import { AppShell } from "@/components/layout/AppShell";
 import { LoginPage } from "@/pages/LoginPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LeadsPage } from "@/pages/LeadsPage";
-import { LeadPipelinePage } from "@/pages/LeadPipelinePage";
 import { PipelinePage } from "@/pages/PipelinePage";
-import { ResidentsPage } from "@/pages/ResidentsPage";
-import { PropertiesPage } from "@/pages/PropertiesPage";
-import { PropertyDetailPage } from "@/pages/PropertyDetailPage";
-import { ExperiencePage } from "@/pages/ExperiencePage";
-import { OutreachPage } from "@/pages/OutreachPage";
+import { SponsorsPage } from "@/pages/SponsorsPage";
+import { InvestorsPage } from "@/pages/InvestorsPage";
+import { PartnersPage } from "@/pages/PartnersPage";
+import { UserAcquisitionPage } from "@/pages/UserAcquisitionPage";
+import { FacilitiesPage } from "@/pages/FacilitiesPage";
+import { FacilityDetailPage } from "@/pages/FacilityDetailPage";
+import { CaptainsPage } from "@/pages/CaptainsPage";
+import { ActivitiesPage } from "@/pages/ActivitiesPage";
 import { TasksPage } from "@/pages/TasksPage";
 import { CampaignsPage } from "@/pages/CampaignsPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
@@ -58,13 +60,15 @@ export function App() {
       >
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/leads" element={<LeadsPage />} />
-        <Route path="/pipeline" element={<LeadPipelinePage />} />
-        <Route path="/cases" element={<PipelinePage />} />
-        <Route path="/residents" element={<ResidentsPage />} />
-        <Route path="/properties" element={<PropertiesPage />} />
-        <Route path="/properties/:id" element={<PropertyDetailPage />} />
-        <Route path="/experience" element={<ExperiencePage />} />
-        <Route path="/outreach" element={<OutreachPage />} />
+        <Route path="/pipeline" element={<PipelinePage />} />
+        <Route path="/sponsors" element={<SponsorsPage />} />
+        <Route path="/investors" element={<InvestorsPage />} />
+        <Route path="/partners" element={<PartnersPage />} />
+        <Route path="/user-acquisition" element={<UserAcquisitionPage />} />
+        <Route path="/facilities" element={<FacilitiesPage />} />
+        <Route path="/facilities/:id" element={<FacilityDetailPage />} />
+        <Route path="/captains" element={<CaptainsPage />} />
+        <Route path="/activities" element={<ActivitiesPage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/campaigns" element={<CampaignsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />

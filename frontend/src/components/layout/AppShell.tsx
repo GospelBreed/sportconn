@@ -11,10 +11,11 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Live updates across the app.
-  useRealtime("cases", [["cases"], ["analytics-summary"]]);
+  useRealtime("leads", [["leads"], ["dashboard-summary"]]);
+  useRealtime("facilities", [["facilities"], ["dashboard-summary"]]);
+  useRealtime("captains", [["captains"]]);
   useRealtime("activities", [["activities"]]);
   useRealtime("notifications", [["notifications"]]);
-  useRealtime("residents", [["residents"], ["analytics-summary"]]);
 
   // Turn lapsed follow-ups into notifications while the app is open.
   useFollowupSweep();

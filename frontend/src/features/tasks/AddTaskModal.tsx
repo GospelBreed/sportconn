@@ -4,27 +4,27 @@ import { useToast } from "@/components/ui/Toast";
 import { Modal } from "@/components/ui/overlays";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { PRIORITIES, PRIORITY_META } from "@/lib/constants";
-import type { CasePriority } from "@/types";
+import type { Priority } from "@/types";
 
 export function AddTaskModal({
   open,
   onClose,
   leadId,
-  residentId,
-  caseId,
+  facilityId,
+  captainId,
 }: {
   open: boolean;
   onClose: () => void;
   leadId?: string;
-  residentId?: string;
-  caseId?: string;
+  facilityId?: string;
+  captainId?: string;
 }) {
   const create = useCreateTask();
   const { data: users } = useUsers();
   const toast = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [priority, setPriority] = useState<CasePriority>("medium");
+  const [priority, setPriority] = useState<Priority>("medium");
   const [due, setDue] = useState("");
   const [assignee, setAssignee] = useState("");
 
@@ -51,8 +51,8 @@ export function AddTaskModal({
         due_at: due ? new Date(due).toISOString() : null,
         assigned_to: assignee || null,
         lead_id: leadId ?? null,
-        resident_id: residentId ?? null,
-        case_id: caseId ?? null,
+        facility_id: facilityId ?? null,
+        captain_id: captainId ?? null,
       },
       {
         onSuccess: () => {
@@ -72,7 +72,7 @@ export function AddTaskModal({
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Priority">
-            <Select value={priority} onChange={(e) => setPriority(e.target.value as CasePriority)}>
+            <Select value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>
                   {PRIORITY_META[p].label}

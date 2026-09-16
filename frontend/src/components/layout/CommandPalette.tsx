@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { listCases, listLeads, listProperties, listResidents } from "@/lib/db";
+import { listCaptains, listFacilities, listLeads, listTasks } from "@/lib/db";
 import { useDebounced } from "@/hooks/useDebounced";
 import { useRole } from "@/lib/auth";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Kbd } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
-import { STAGE_LABEL } from "@/lib/constants";
 
-const OPEN_EVENT = "roseway:open-command";
+const OPEN_EVENT = "sportconn:open-command";
 export function openCommandPalette() {
   window.dispatchEvent(new Event(OPEN_EVENT));
 }
@@ -59,39 +58,40 @@ export function CommandPalette() {
   const term = useDebounced(q, 200);
   const enabled = open && term.trim().length > 0;
 
-  const { data: residents } = useQuery({
-    queryKey: ["cmd-residents", term],
-    queryFn: () => listResidents({ q: term }),
-    enabled,
-  });
-  const { data: properties } = useQuery({
-    queryKey: ["cmd-properties", term],
-    queryFn: () => listProperties(term),
-    enabled,
-  });
-  const { data: cases } = useQuery({
-    queryKey: ["cmd-cases"],
-    queryFn: () => listCases(),
-    enabled,
-  });
   const { data: leads } = useQuery({
     queryKey: ["cmd-leads", term],
     queryFn: () => listLeads({ q: term }),
     enabled,
   });
+  const { data: facilities } = useQuery({
+    queryKey: ["cmd-facilities", term],
+    queryFn: () => listFacilities({ q: term }),
+    enabled,
+  });
+  const { data: captains } = useQuery({
+    queryKey: ["cmd-captains", term],
+    queryFn: () => listCaptains({ q: term }),
+    enabled,
+  });
+  const { data: tasks } = useQuery({
+    queryKey: ["cmd-tasks"],
+    queryFn: () => listTasks(),
+    enabled,
+  });
 
   const quickActions = useMemo<Row[]>(() => {
     const base: Row[] = [
-      { id: "qa-dashboard", label: "Go to Dashboard", sub: "Portfolio overview", icon: "home", to: "/dashboard", group: "Actions" },
+      { id: "qa-dashboard", label: "Go to Dashboard", sub: "Growth command centre", icon: "home", to: "/dashboard", group: "Actions" },
+      { id: "qa-pipeline", label: "Open Pipeline", sub: "All pipelines, one board", icon: "board", to: "/pipeline", group: "Actions" },
       { id: "qa-tasks", label: "Open Tasks", sub: "Due today & overdue", icon: "followups", to: "/tasks", group: "Actions" },
       { id: "qa-analytics", label: "Open Reports & Analytics", sub: "KPIs & trends", icon: "analytics", to: "/analytics", group: "Actions" },
-      { id: "qa-settings", label: "Go to Settings", sub: "Profile & team", icon: "settings", to: "/settings", group: "Actions" },
+      { id: "qa-settings", label: "Go to Settings", sub: "Profile, team & pipelines", icon: "settings", to: "/settings", group: "Actions" },
     ];
     if (canWrite) {
       base.unshift(
-        { id: "qa-new-lead", label: "New lead", sub: "Add to the dealflow pipeline", icon: "plus", to: "/pipeline?new=1", group: "Actions" },
-        { id: "qa-new-case", label: "New case", sub: "Add a resident case", icon: "plus", to: "/cases?new=1", group: "Actions" },
-        { id: "qa-new-resident", label: "New resident", sub: "Add to the directory", icon: "plus", to: "/residents?new=1", group: "Actions" },
+        { id: "qa-new-lead", label: "New lead", sub: "Add to the dealflow pipeline", icon: "plus", to: "/leads?new=1", group: "Actions" },
+        { id: "qa-new-facility", label: "New facility", sub: "Add a venue opportunity", icon: "plus", to: "/facilities?new=1", group: "Actions" },
+        { id: "qa-new-captain", label: "New captain", sub: "Add to Captains & Communities", icon: "plus", to: "/captains?new=1", group: "Actions" },
         { id: "qa-new-task", label: "New task", sub: "Add a to-do", icon: "plus", to: "/tasks?new=1", group: "Actions" },
       );
     }
@@ -104,54 +104,54 @@ export function CommandPalette() {
     }
     const t = term.toLowerCase();
     const out: Row[] = [];
-    (leads ?? []).slice(0, 5).forEach((l) =>
+    (leads ?? []).slice(0, 6).forEach((l) =>
       out.push({
         id: l.id,
-        label: l.property_name ?? l.full_name,
-        sub: [l.company_name, l.full_name].filter(Boolean).join(" · ") || "Lead",
-        icon: "residents",
+        label: l.full_name,
+        sub: [l.company_name, l.pipeline].filter(Boolean).join(" · ") || "Lead",
+        icon: "person",
         to: `/leads?focus=${l.id}`,
         group: "Leads",
       }),
     );
-    (residents ?? []).slice(0, 5).forEach((r) =>
+    (facilities ?? []).slice(0, 5).forEach((f) =>
       out.push({
-        id: r.id,
-        label: r.full_name,
-        sub: [r.properties?.name, r.unit_number && `Unit ${r.unit_number}`].filter(Boolean).join(" · ") || "Member",
-        icon: "residents",
-        to: `/residents?focus=${r.id}`,
-        group: "Members",
-      }),
-    );
-    (properties ?? []).slice(0, 4).forEach((p) =>
-      out.push({
-        id: p.id,
-        label: p.name,
-        sub: [p.city, p.state].filter(Boolean).join(", ") || "Facility",
+        id: f.id,
+        label: f.name,
+        sub: [f.city, f.area].filter(Boolean).join(", ") || "Facility",
         icon: "properties",
-        to: `/properties/${p.id}`,
+        to: `/facilities/${f.id}`,
         group: "Facilities",
       }),
     );
-    (cases ?? [])
-      .filter((c) => c.title.toLowerCase().includes(t) || c.residents?.full_name?.toLowerCase().includes(t))
+    (captains ?? []).slice(0, 5).forEach((c) =>
+      out.push({
+        id: c.id,
+        label: c.full_name,
+        sub: [c.community, c.area].filter(Boolean).join(" · ") || "Captain",
+        icon: "users",
+        to: `/captains?focus=${c.id}`,
+        group: "Captains",
+      }),
+    );
+    (tasks ?? [])
+      .filter((task) => task.title.toLowerCase().includes(t))
       .slice(0, 5)
-      .forEach((c) =>
+      .forEach((task) =>
         out.push({
-          id: c.id,
-          label: c.title,
-          sub: `${c.residents?.full_name ?? c.properties?.name ?? "—"} · ${STAGE_LABEL[c.stage]}`,
-          icon: "board",
-          to: `/cases?case=${c.id}`,
-          group: "Cases",
+          id: task.id,
+          label: task.title,
+          sub: task.leads?.full_name ?? task.facilities?.name ?? task.captains?.full_name ?? "Task",
+          icon: "followups",
+          to: `/tasks?focus=${task.id}`,
+          group: "Tasks",
         }),
       );
     const actions = quickActions.filter(
       (a) => a.label.toLowerCase().includes(t) || a.sub.toLowerCase().includes(t),
     );
     return [...actions, ...out];
-  }, [enabled, term, residents, properties, cases, quickActions]);
+  }, [enabled, term, leads, facilities, captains, tasks, quickActions]);
 
   const go = (r: Row) => {
     setOpen(false);
@@ -186,7 +186,7 @@ export function CommandPalette() {
                 go(results[active]);
               }
             }}
-            placeholder="Search members, facilities, cases — or type a command…"
+            placeholder="Search leads, sponsors, investors, facilities, captains — or type a command…"
             className="h-14 flex-1 bg-transparent text-[15px] text-ink outline-none placeholder:text-muted"
           />
           <Kbd>ESC</Kbd>

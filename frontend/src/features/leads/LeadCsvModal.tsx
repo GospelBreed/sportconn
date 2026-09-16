@@ -172,7 +172,7 @@ export function LeadCsvModal({ open, onClose }: { open: boolean; onClose: () => 
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => downloadFile("roseway-leads-template.csv", leadCsvTemplate())}
+                onClick={() => downloadFile("sportconn-leads-template.csv", leadCsvTemplate())}
               >
                 <Icon name="upload" size={13} /> Download template
               </Button>
@@ -209,7 +209,7 @@ export function LeadCsvModal({ open, onClose }: { open: boolean; onClose: () => 
         <div className="space-y-3">
           <p className="text-xs text-muted">
             Match each column in <span className="font-medium text-ink">{fileName}</span> to a
-            Roseway field. Leave unmatched columns as "— Ignore —".
+            SportConn field. Leave unmatched columns as "— Ignore —".
           </p>
           <div className="max-h-72 overflow-y-auto rounded-control border border-line">
             <table className="w-full text-xs">

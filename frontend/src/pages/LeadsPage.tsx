@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useDeleteLead, useLeads, useUsers } from "@/hooks/queries";
+import { useDeleteLead, useLeads, usePipelineStages, usePipelines, useUsers } from "@/hooks/queries";
 import { useDebounced } from "@/hooks/useDebounced";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useRole } from "@/lib/auth";
@@ -10,43 +10,55 @@ import { Avatar, Button, Input, Select } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/overlays";
-import {
-  ExperienceScore,
-  FollowupBadge,
-  LeadStageBadge,
-  TemperatureBadge,
-} from "@/components/ui/badges";
-import {
-  LEAD_SOURCE_LABEL,
-  LEAD_STAGES,
-  PROPERTY_TYPE_LABEL,
-} from "@/lib/constants";
-import { formatCompactUsd } from "@/lib/money";
+import { FollowupBadge, StageBadge, StatusBadge, TemperatureBadge } from "@/components/ui/badges";
+import { LEAD_SOURCE_LABEL, LEAD_TYPE_LABEL } from "@/lib/constants";
+import { formatCompactMoney } from "@/lib/money";
+import { formatRelative } from "@/lib/format";
 import { AddLeadModal } from "@/features/leads/AddLeadModal";
 import { LeadSlideOver } from "@/features/leads/LeadSlideOver";
 import { LeadCsvModal } from "@/features/leads/LeadCsvModal";
 import { leadsToCsvRows } from "@/features/leads/leadCsv";
 import { downloadFile, toCsv } from "@/lib/csv";
-import type { Lead } from "@/types";
+import type { Lead, PipelineKey } from "@/types";
 
-export function LeadsPage() {
+export function LeadsPage({
+  pipeline: lockedPipeline,
+  eyebrow = "Sportconn dealflow",
+  title = "Leads",
+  subtitle = "Every prospect across every pipeline, in one place.",
+  emptyLabel = "lead",
+}: {
+  pipeline?: PipelineKey;
+  eyebrow?: string;
+  title?: string;
+  subtitle?: string;
+  emptyLabel?: string;
+}) {
   const [params, setParams] = useSearchParams();
   const { canWrite, canDelete, canImport, canExport } = useRole();
   const toast = useToast();
   useRealtime("leads", [["leads"]]);
 
   const [search, setSearch] = useState("");
+  const [pipelineFilter, setPipelineFilter] = useState<string>(lockedPipeline ?? "");
+  const [leadType, setLeadType] = useState("");
   const [stage, setStage] = useState("");
   const [temperature, setTemperature] = useState("");
   const [source, setSource] = useState("");
+  const [owner, setOwner] = useState("");
   const q = useDebounced(search, 300);
 
+  const { data: pipelines } = usePipelines();
+  const { data: stages } = usePipelineStages((pipelineFilter || undefined) as PipelineKey | undefined);
   const { data: users } = useUsers();
   const { data: leads, isLoading, isError, refetch } = useLeads({
     q: q || undefined,
+    pipeline: lockedPipeline ?? (pipelineFilter || undefined),
+    lead_type: leadType || undefined,
     stage: stage || undefined,
     temperature: temperature || undefined,
     source: source || undefined,
+    assigned_to: owner || undefined,
   });
   const del = useDeleteLead();
 
@@ -63,7 +75,7 @@ export function LeadsPage() {
     }
     const { headers, rows } = leadsToCsvRows(list);
     const stamp = new Date().toISOString().slice(0, 10);
-    downloadFile(`roseway-leads-${stamp}.csv`, toCsv(headers, rows));
+    downloadFile(`sportconn-leads-${stamp}.csv`, toCsv(headers, rows));
     toast.success(`Exported ${list.length} lead${list.length === 1 ? "" : "s"}`);
   };
 
@@ -85,12 +97,14 @@ export function LeadsPage() {
     }
   };
 
+  const stageLabel = (l: Lead) => stages?.find((s) => s.key === l.stage)?.label ?? l.stage;
+
   return (
     <div className="p-5 sm:p-6">
       <PageHeader
-        eyebrow="Sportconn dealflow"
-        title="Leads"
-        subtitle="Prospective facility partners and their conversion pipeline."
+        eyebrow={eyebrow}
+        title={title}
+        subtitle={subtitle}
         actions={
           <>
             {canImport && (
@@ -105,37 +119,66 @@ export function LeadsPage() {
             )}
             {canWrite && (
               <Button onClick={() => setAddOpen(true)}>
-                <Icon name="plus" size={16} /> Add lead
+                <Icon name="plus" size={16} /> Add {emptyLabel}
               </Button>
             )}
           </>
         }
       />
 
-      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
+      <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+        <div className="relative flex-1 lg:min-w-[220px]">
           <Icon name="search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search lead, company, facility…" className="pl-9" />
+          <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search lead, company, sponsor, investor…" className="pl-9" />
         </div>
-        <Select value={stage} onChange={(e) => setStage(e.target.value)} className="lg:w-40">
-          <option value="">All stages</option>
-          {LEAD_STAGES.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
+        {!lockedPipeline && (
+          <Select value={pipelineFilter} onChange={(e) => { setPipelineFilter(e.target.value); setStage(""); }} className="lg:w-44">
+            <option value="">All pipelines</option>
+            {pipelines?.map((p) => (
+              <option key={p.key} value={p.key}>
+                {p.label}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Select value={leadType} onChange={(e) => setLeadType(e.target.value)} className="lg:w-40">
+          <option value="">All types</option>
+          {Object.entries(LEAD_TYPE_LABEL).map(([k, v]) => (
+            <option key={k} value={k}>
+              {v}
             </option>
           ))}
         </Select>
-        <Select value={temperature} onChange={(e) => setTemperature(e.target.value)} className="lg:w-36">
+        {pipelineFilter && (
+          <Select value={stage} onChange={(e) => setStage(e.target.value)} className="lg:w-40">
+            <option value="">All stages</option>
+            {stages?.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
+        )}
+        <Select value={temperature} onChange={(e) => setTemperature(e.target.value)} className="lg:w-32">
           <option value="">All temps</option>
           <option value="hot">Hot</option>
           <option value="warm">Warm</option>
           <option value="cold">Cold</option>
+          <option value="at_risk">At Risk</option>
         </Select>
-        <Select value={source} onChange={(e) => setSource(e.target.value)} className="lg:w-44">
+        <Select value={source} onChange={(e) => setSource(e.target.value)} className="lg:w-40">
           <option value="">All sources</option>
           {Object.entries(LEAD_SOURCE_LABEL).map(([k, v]) => (
             <option key={k} value={k}>
               {v}
+            </option>
+          ))}
+        </Select>
+        <Select value={owner} onChange={(e) => setOwner(e.target.value)} className="lg:w-40">
+          <option value="">All owners</option>
+          {users?.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.full_name}
             </option>
           ))}
         </Select>
@@ -150,24 +193,27 @@ export function LeadsPage() {
           <ErrorState message="Could not load leads." onRetry={() => refetch()} />
         ) : !leads || leads.length === 0 ? (
           <EmptyState
-            icon={<Icon name="residents" />}
-            title="No leads found"
-            subtitle="Adjust filters or add the first lead."
-            action={canWrite && <Button onClick={() => setAddOpen(true)}><Icon name="plus" size={16} /> Add lead</Button>}
+            icon={<Icon name="person" />}
+            title={`No ${emptyLabel}s found`}
+            subtitle={`Adjust filters or add the first ${emptyLabel}.`}
+            action={canWrite && <Button onClick={() => setAddOpen(true)}><Icon name="plus" size={16} /> Add {emptyLabel}</Button>}
           />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line bg-surface-2 text-left text-[11px] uppercase tracking-wide text-muted">
-                  <th className="px-4 py-3 font-semibold">Lead contact</th>
-                  <th className="hidden px-4 py-3 font-semibold md:table-cell">Facility &amp; management</th>
-                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Location &amp; scale</th>
-                  <th className="hidden px-4 py-3 font-semibold xl:table-cell">Asset</th>
-                  <th className="px-4 py-3 font-semibold">Exp. score</th>
+                  <th className="px-4 py-3 font-semibold">Lead</th>
+                  <th className="hidden px-4 py-3 font-semibold md:table-cell">Organization</th>
+                  <th className="hidden px-4 py-3 font-semibold xl:table-cell">Type</th>
+                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Location</th>
+                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Owner</th>
+                  <th className="px-4 py-3 font-semibold">Value</th>
                   <th className="px-4 py-3 font-semibold">Temp</th>
                   <th className="px-4 py-3 font-semibold">Stage</th>
-                  <th className="hidden px-4 py-3 font-semibold lg:table-cell">Follow-up</th>
+                  <th className="hidden px-4 py-3 font-semibold xl:table-cell">Next follow-up</th>
+                  <th className="hidden px-4 py-3 font-semibold xl:table-cell">Last activity</th>
+                  <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 text-right font-semibold">·</th>
                 </tr>
               </thead>
@@ -187,29 +233,27 @@ export function LeadsPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="hidden px-4 py-3 md:table-cell">
-                      <p className="text-body">{l.property_name ?? "—"}</p>
-                      <p className="text-xs text-muted">{l.company_name ?? "—"}</p>
-                    </td>
+                    <td className="hidden px-4 py-3 text-muted md:table-cell">{l.company_name ?? "—"}</td>
+                    <td className="hidden px-4 py-3 text-muted xl:table-cell">{LEAD_TYPE_LABEL[l.lead_type]}</td>
                     <td className="hidden px-4 py-3 text-muted lg:table-cell">
-                      {[l.location_city, l.location_state].filter(Boolean).join(", ") || "—"}
-                      <span className="block text-xs">{l.unit_count ? `${l.unit_count} units` : ""}</span>
+                      {[l.location_city, l.location_country].filter(Boolean).join(", ") || "—"}
                     </td>
-                    <td className="hidden px-4 py-3 text-muted xl:table-cell">
-                      {PROPERTY_TYPE_LABEL[l.asset_type]}
-                      <span className="block text-xs">{formatCompactUsd(l.estimated_arr)}/yr</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <ExperienceScore score={l.experience_score} />
+                    <td className="hidden px-4 py-3 text-muted lg:table-cell">{l.assignee?.full_name ?? "Unassigned"}</td>
+                    <td className="px-4 py-3 text-body">
+                      {l.pipeline === "user_acquisition" ? `${l.actual_users}/${l.target_users ?? "—"}` : formatCompactMoney(l.expected_value, l.currency)}
                     </td>
                     <td className="px-4 py-3">
                       <TemperatureBadge temperature={l.temperature} />
                     </td>
                     <td className="px-4 py-3">
-                      <LeadStageBadge stage={l.stage} />
+                      <StageBadge label={stageLabel(l)} />
                     </td>
-                    <td className="hidden px-4 py-3 lg:table-cell">
+                    <td className="hidden px-4 py-3 xl:table-cell">
                       <FollowupBadge at={l.next_follow_up_at} />
+                    </td>
+                    <td className="hidden px-4 py-3 text-muted xl:table-cell">{formatRelative(l.last_activity_at)}</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={l.status} />
                     </td>
                     <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
                       {canDelete && (
@@ -231,13 +275,13 @@ export function LeadsPage() {
       </div>
 
       <LeadSlideOver leadId={selected} open={selected !== null} onClose={close} />
-      <AddLeadModal open={addOpen} onClose={() => setAddOpen(false)} />
+      <AddLeadModal open={addOpen} onClose={() => setAddOpen(false)} defaultPipeline={lockedPipeline} />
       <LeadCsvModal open={csvOpen} onClose={() => setCsvOpen(false)} />
       <ConfirmDialog
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         title="Delete lead"
-        message={`Permanently delete "${toDelete?.full_name}"? Outreach and tasks on this lead are removed too.`}
+        message={`Permanently delete "${toDelete?.full_name}"? Activities and tasks on this lead are removed too.`}
         loading={del.isPending}
         onConfirm={() =>
           toDelete &&

@@ -1,35 +1,38 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { createOutreach, createTask, updateTask } from "@/lib/db";
-import { useLeadDetail, useUpdateLead, useUsers } from "@/hooks/queries";
+import { useLeadDetail, usePipelineStages, useUpdateLead, useUsers } from "@/hooks/queries";
 import { useRole } from "@/lib/auth";
 import { useToast } from "@/components/ui/Toast";
-import { SlideOver, Tabs } from "@/components/ui/overlays";
-import { Avatar, Badge, Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { ConfirmDialog, SlideOver, Tabs } from "@/components/ui/overlays";
+import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState, SkeletonRows } from "@/components/ui/states";
 import { FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
-import { ScoreRing } from "@/components/ui/ScoreRing";
 import {
   ACTIVITY_META,
   CHANNEL_META,
+  FOLLOWUP_TYPE_LABEL,
+  FOLLOWUP_TYPES,
   LEAD_SOURCE_LABEL,
-  LEAD_STAGES,
+  LEAD_TYPE_LABEL,
+  LOST_REASON_LABEL,
+  LOST_REASONS,
   OUTCOME_META,
-  PILLARS,
-  PROPERTY_TYPE_LABEL,
+  PRIORITY_META,
   TEMPERATURE_META,
+  TEMPERATURES,
 } from "@/lib/constants";
 import { formatDateTime, formatRelative, toDateTimeLocal } from "@/lib/format";
-import { formatUsd } from "@/lib/money";
+import { formatMoney } from "@/lib/money";
 import type {
-  ExperienceAssessment,
   Lead,
   LeadDetail,
-  LeadStage,
-  LeadTemperature,
+  LostReason,
   OutreachChannel,
   OutreachOutcome,
+  PipelineKey,
+  Temperature,
 } from "@/types";
 
 type Tab = "overview" | "timeline" | "outreach" | "tasks";
@@ -66,8 +69,8 @@ export function LeadSlideOver({
               tabs={[
                 { key: "overview", label: "Overview" },
                 { key: "timeline", label: "Timeline" },
-                { key: "outreach", label: "Outreach", count: lead.outreach.length },
-                { key: "tasks", label: "Tasks", count: lead.tasks.filter((t) => t.status === "open").length },
+                { key: "outreach", label: "Activities", count: lead.outreach.length },
+                { key: "tasks", label: "Tasks", count: lead.tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled").length },
               ]}
             />
           </div>
@@ -87,37 +90,90 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
   const { canWrite } = useRole();
   const update = useUpdateLead();
   const toast = useToast();
+  const { data: stages } = usePipelineStages(lead.pipeline as PipelineKey);
+  const [lostOpen, setLostOpen] = useState(false);
+  const [lostReason, setLostReason] = useState<LostReason>("other");
+
   const save = (body: Partial<Lead>) =>
     update.mutate(
       { id: lead.id, body },
       { onError: (e) => toast.error(e instanceof Error ? e.message : "Update failed") },
     );
 
+  const wonStage = stages?.find((s) => s.is_won)?.key;
+  const lostStage = stages?.find((s) => s.is_lost)?.key;
+
+  const markWon = () => {
+    if (!wonStage) return;
+    save({ stage: wonStage });
+    toast.success("Marked Won");
+  };
+
+  const confirmLost = () => {
+    if (!lostStage) return;
+    save({ stage: lostStage, lost_reason: lostReason });
+    setLostOpen(false);
+    toast.success("Marked Lost");
+  };
+
   return (
     <div className="border-b border-line p-5">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Avatar name={lead.full_name} size={46} />
-          <div className="min-w-0">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
             <h2 className="truncate text-lg font-semibold text-ink">{lead.full_name}</h2>
-            <p className="truncate text-sm text-muted">
-              {lead.title ?? "—"} · {lead.company_name ?? "—"}
-            </p>
+            <Badge className="bg-line text-muted">{LEAD_TYPE_LABEL[lead.lead_type]}</Badge>
           </div>
+          <p className="truncate text-sm text-muted">
+            {lead.title ?? "—"} · {lead.company_name ?? "—"} · {lead.location_city ?? "—"}
+          </p>
         </div>
         <button onClick={onClose} className="rounded-control p-1 text-muted hover:bg-line/60 hover:text-ink" aria-label="Close">
           <Icon name="close" size={18} />
         </button>
       </div>
 
+      <div className="mt-3 flex flex-wrap gap-2">
+        {lead.phone && (
+          <a href={`tel:${lead.phone}`} className="btn-secondary-sm inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-xs font-medium text-body hover:bg-line/40">
+            <Icon name="phone" size={13} /> Call
+          </a>
+        )}
+        {lead.email && (
+          <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-xs font-medium text-body hover:bg-line/40">
+            <Icon name="mail" size={13} /> Email
+          </a>
+        )}
+        {(lead.whatsapp || lead.phone) && (
+          <a
+            href={`https://wa.me/${(lead.whatsapp || lead.phone || "").replace(/[^0-9]/g, "")}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-xs font-medium text-body hover:bg-line/40"
+          >
+            <Icon name="mail" size={13} /> WhatsApp
+          </a>
+        )}
+        {canWrite && lead.status === "open" && wonStage && (
+          <button onClick={markWon} className="inline-flex items-center gap-1.5 rounded-control bg-success/10 px-2.5 py-1.5 text-xs font-medium text-success hover:bg-success/15">
+            <Icon name="check" size={13} /> Mark Won
+          </button>
+        )}
+        {canWrite && lead.status === "open" && lostStage && (
+          <button onClick={() => setLostOpen(true)} className="inline-flex items-center gap-1.5 rounded-control bg-danger/10 px-2.5 py-1.5 text-xs font-medium text-danger hover:bg-danger/15">
+            <Icon name="flag" size={13} /> Mark Lost
+          </button>
+        )}
+      </div>
+
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Select
           value={lead.stage}
           disabled={!canWrite}
-          onChange={(e) => save({ stage: e.target.value as LeadStage })}
+          onChange={(e) => save({ stage: e.target.value })}
           className="h-9 text-xs"
         >
-          {LEAD_STAGES.map((s) => (
+          {(stages ?? []).map((s) => (
             <option key={s.key} value={s.key}>
               {s.label}
             </option>
@@ -126,20 +182,41 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
         <Select
           value={lead.temperature}
           disabled={!canWrite}
-          onChange={(e) => save({ temperature: e.target.value as LeadTemperature })}
+          onChange={(e) => save({ temperature: e.target.value as Temperature })}
           className="h-9 text-xs"
         >
-          {(["hot", "warm", "cold"] as LeadTemperature[]).map((t) => (
+          {TEMPERATURES.map((t) => (
             <option key={t} value={t}>
               {TEMPERATURE_META[t].label}
             </option>
           ))}
         </Select>
         <div className="col-span-2 flex items-center justify-end gap-2">
-          <span className="text-xs text-muted">ARR</span>
-          <span className="text-sm font-bold text-ink">{formatUsd(lead.estimated_arr)}/yr</span>
+          <span className="text-xs text-muted">Value</span>
+          <span className="text-sm font-bold text-ink">{formatMoney(lead.expected_value, lead.currency)}</span>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={lostOpen}
+        onClose={() => setLostOpen(false)}
+        title="Mark as Lost"
+        message={
+          <div className="space-y-2 pt-1">
+            <p className="text-sm text-muted">A reason is required so Reports can track why deals are lost.</p>
+            <Select value={lostReason} onChange={(e) => setLostReason(e.target.value as LostReason)}>
+              {LOST_REASONS.map((r) => (
+                <option key={r} value={r}>
+                  {LOST_REASON_LABEL[r]}
+                </option>
+              ))}
+            </Select>
+          </div>
+        }
+        confirmLabel="Mark Lost"
+        tone="danger"
+        onConfirm={confirmLost}
+      />
     </div>
   );
 }
@@ -171,22 +248,25 @@ function Overview({ lead }: { lead: LeadDetail }) {
           <dl className="space-y-1.5 text-xs">
             <Row label="Email" value={lead.email} />
             <Row label="Phone" value={lead.phone} />
+            <Row label="WhatsApp" value={lead.whatsapp} />
             <Row label="LinkedIn" value={lead.linkedin_url} />
             <Row label="Source" value={LEAD_SOURCE_LABEL[lead.source]} />
           </dl>
         </div>
         <div className="card-base p-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
-            <Icon name="properties" size={14} /> Property asset
+            <Icon name="building" size={14} /> Organization
           </h3>
           <dl className="space-y-1.5 text-xs">
-            <Row label="Facility" value={lead.property_name} />
-            <Row
-              label="Location"
-              value={[lead.location_city, lead.location_state].filter(Boolean).join(", ")}
-            />
-            <Row label="Units" value={lead.unit_count ? String(lead.unit_count) : null} />
-            <Row label="Asset type" value={PROPERTY_TYPE_LABEL[lead.asset_type]} />
+            <Row label="Company" value={lead.company_name} />
+            <Row label="Location" value={[lead.location_city, lead.location_country].filter(Boolean).join(", ")} />
+            <Row label="Priority" value={PRIORITY_META[lead.priority].label} />
+            {lead.pipeline === "sponsor" && <Row label="Sponsorship category" value={lead.sponsorship_category} />}
+            {lead.pipeline === "investor" && <Row label="Investor type" value={lead.investor_type} />}
+            {lead.pipeline === "investor" && <Row label="Ticket size" value={lead.ticket_size ? formatMoney(lead.ticket_size, lead.currency) : null} />}
+            {lead.pipeline === "user_acquisition" && (
+              <Row label="Users" value={`${lead.actual_users ?? 0} / ${lead.target_users ?? "—"}`} />
+            )}
           </dl>
         </div>
       </div>
@@ -207,15 +287,15 @@ function Overview({ lead }: { lead: LeadDetail }) {
               ))}
             </Select>
           </Field>
-          <Field label="Estimated ARR (USD/yr)">
+          <Field label="Expected value">
             <Input
               type="number"
               min={0}
-              defaultValue={lead.estimated_arr}
+              defaultValue={lead.expected_value ?? ""}
               disabled={!canWrite}
               onBlur={(e) => {
-                const n = Number(e.target.value || 0);
-                if (n !== lead.estimated_arr) save({ estimated_arr: n });
+                const n = e.target.value ? Number(e.target.value) : null;
+                if (n !== lead.expected_value) save({ expected_value: n });
               }}
             />
           </Field>
@@ -228,6 +308,19 @@ function Overview({ lead }: { lead: LeadDetail }) {
               disabled={!canWrite}
               onChange={(e) => setFollowUp(e.target.value)}
             />
+            <Select
+              value={lead.next_follow_up_type ?? ""}
+              disabled={!canWrite}
+              onChange={(e) => save({ next_follow_up_type: (e.target.value || null) as Lead["next_follow_up_type"] })}
+              className="w-40"
+            >
+              <option value="">Type…</option>
+              {FOLLOWUP_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {FOLLOWUP_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </Select>
             <Button
               size="sm"
               variant="secondary"
@@ -250,90 +343,6 @@ function Overview({ lead }: { lead: LeadDetail }) {
           />
         </Field>
       </div>
-
-      <Diagnostic assessment={lead.assessment} />
-    </div>
-  );
-}
-
-function Diagnostic({ assessment }: { assessment: ExperienceAssessment | null }) {
-  if (!assessment) {
-    return (
-      <div className="card-base p-4">
-        <EmptyState
-          icon={<Icon name="sparkle" />}
-          title="No experience diagnostic"
-          subtitle="Once this facility completes the Member Experience checklist, the score and pillar breakdown appear here."
-        />
-      </div>
-    );
-  }
-  const pillars = PILLARS.map((p) => ({
-    label: p.label,
-    value: (assessment[p.key as keyof ExperienceAssessment] as number | null) ?? null,
-  }));
-  return (
-    <div className="card-base space-y-4 p-4">
-      <div className="flex items-center gap-4">
-        <ScoreRing score={assessment.overall_score} size={72} />
-        <div>
-          <h3 className="text-sm font-semibold text-ink">Member Experience Diagnostic</h3>
-          <p className="text-xs text-muted">Submitted {formatDateTime(assessment.submitted_at)}</p>
-        </div>
-      </div>
-      {assessment.synthesis && (
-        <p className="rounded-control bg-surface-2 p-3 text-xs leading-relaxed text-body">
-          {assessment.synthesis}
-        </p>
-      )}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-        {pillars.map((p) => (
-          <div key={p.label}>
-            <div className="mb-1 flex justify-between text-[11px]">
-              <span className="text-body">{p.label}</span>
-              <span className="font-semibold text-muted">{p.value ?? "—"}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-line">
-              <div
-                className={
-                  "h-full rounded-full " +
-                  ((p.value ?? 0) >= 70 ? "bg-success" : (p.value ?? 0) >= 50 ? "bg-warning" : "bg-danger")
-                }
-                style={{ width: `${p.value ?? 0}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-      {assessment.recommended_scope.length > 0 && (
-        <div>
-          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-primary">
-            <Icon name="sparkle" size={13} /> Recommended scope
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {assessment.recommended_scope.map((s) => (
-              <Badge key={s} className="bg-primary/10 text-primary">
-                {s}
-              </Badge>
-            ))}
-          </div>
-        </div>
-      )}
-      {assessment.responses.length > 0 && (
-        <details className="text-xs">
-          <summary className="cursor-pointer font-semibold text-muted">
-            Diagnostic intake responses ({assessment.responses.length})
-          </summary>
-          <div className="mt-2 space-y-2">
-            {assessment.responses.map((r, i) => (
-              <div key={i} className="rounded-control border border-line p-2">
-                <p className="font-medium text-body">{r.q}</p>
-                <p className="mt-0.5 text-muted">"{r.a}"</p>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
     </div>
   );
 }
@@ -373,15 +382,15 @@ function Timeline({ lead }: { lead: LeadDetail }) {
   );
 }
 
-const CHANNELS: OutreachChannel[] = ["email", "call", "linkedin", "meeting", "sms", "other"];
+const CHANNELS: OutreachChannel[] = ["call", "whatsapp", "email", "meeting", "linkedin", "proposal", "demo", "other"];
 
 function OutreachTab({ lead }: { lead: LeadDetail }) {
   const { canWrite } = useRole();
   const qc = useQueryClient();
   const toast = useToast();
-  const [channel, setChannel] = useState<OutreachChannel>("email");
+  const [channel, setChannel] = useState<OutreachChannel>("call");
   const [subject, setSubject] = useState("");
-  const [outcome, setOutcome] = useState("sent");
+  const [outcome, setOutcome] = useState("completed");
   const [saving, setSaving] = useState(false);
 
   const log = async () => {
@@ -396,7 +405,7 @@ function OutreachTab({ lead }: { lead: LeadDetail }) {
       setSubject("");
       qc.invalidateQueries({ queryKey: ["lead", lead.id] });
       qc.invalidateQueries({ queryKey: ["outreach"] });
-      toast.success("Outreach logged");
+      toast.success("Activity logged");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not log");
     } finally {
@@ -424,16 +433,16 @@ function OutreachTab({ lead }: { lead: LeadDetail }) {
               ))}
             </Select>
           </div>
-          <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Subject / summary" />
+          <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Note / summary" />
           <div className="flex justify-end">
             <Button size="sm" onClick={log} loading={saving}>
-              Log outreach
+              Log activity
             </Button>
           </div>
         </div>
       )}
       {lead.outreach.length === 0 ? (
-        <EmptyState icon={<Icon name="mail" />} title="No outreach yet" subtitle="Log the first touch above." />
+        <EmptyState icon={<Icon name="mail" />} title="No activity logged yet" subtitle="Log the first call, email, or WhatsApp touch above." />
       ) : (
         <div className="space-y-2">
           {lead.outreach.map((o) => {
@@ -490,9 +499,9 @@ function TasksTab({ lead }: { lead: LeadDetail }) {
     }
   };
 
-  const toggle = async (id: string, status: "open" | "done") => {
+  const toggle = async (id: string, done: boolean) => {
     try {
-      await updateTask(id, { status: status === "open" ? "done" : "open" });
+      await updateTask(id, { status: done ? "to_do" : "completed" });
       qc.invalidateQueries({ queryKey: ["lead", lead.id] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
     } catch (e) {
@@ -517,28 +526,31 @@ function TasksTab({ lead }: { lead: LeadDetail }) {
         <EmptyState icon={<Icon name="check" />} title="No tasks" subtitle="Add a follow-up task above." />
       ) : (
         <div className="space-y-2">
-          {lead.tasks.map((t) => (
-            <div key={t.id} className="card-base flex items-center gap-3 p-3">
-              <button
-                onClick={() => toggle(t.id, t.status)}
-                disabled={!canWrite}
-                className={
-                  "flex h-5 w-5 shrink-0 items-center justify-center rounded border " +
-                  (t.status === "done" ? "border-success bg-success text-white" : "border-line")
-                }
-                aria-label="Toggle done"
-              >
-                {t.status === "done" && <Icon name="check" size={12} />}
-              </button>
-              <div className="min-w-0 flex-1">
-                <p className={"text-sm " + (t.status === "done" ? "text-muted line-through" : "text-body")}>
-                  {t.title}
-                </p>
-                {t.due_at && <p className="text-xs text-muted">Due {formatDateTime(t.due_at)}</p>}
+          {lead.tasks.map((t) => {
+            const done = t.status === "completed";
+            return (
+              <div key={t.id} className="card-base flex items-center gap-3 p-3">
+                <button
+                  onClick={() => toggle(t.id, done)}
+                  disabled={!canWrite}
+                  className={
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded border " +
+                    (done ? "border-success bg-success text-white" : "border-line")
+                  }
+                  aria-label="Toggle done"
+                >
+                  {done && <Icon name="check" size={12} />}
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className={"text-sm " + (done ? "text-muted line-through" : "text-body")}>
+                    {t.title}
+                  </p>
+                  {t.due_at && <p className="text-xs text-muted">Due {formatDateTime(t.due_at)}</p>}
+                </div>
+                <FollowupBadge at={!done ? t.due_at : null} />
               </div>
-              <FollowupBadge at={t.status === "open" ? t.due_at : null} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

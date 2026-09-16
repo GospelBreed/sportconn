@@ -1,4 +1,16 @@
-# ARCHITECTURE.md — Sportconn CRM (fork of Roseway CRM; schema/tables unchanged, see CLAUDE.md)
+# ARCHITECTURE.md — SportConn CRM
+
+> **Stale-content notice:** this document was written for the original
+> Roseway CRM schema (`roseway.properties`/`residents`/`cases`, a single
+> fixed-stage lead pipeline, resident-experience assessments) and has **not**
+> been fully rewritten for SportConn's multi-pipeline schema
+> (`sportconn.leads`/`facilities`/`captains`/`pipelines`/`pipeline_stages`).
+> The high-level patterns below (no app server, Supabase-native, RLS as the
+> authorization boundary, triggers instead of a backend, realtime instead of
+> polling) are still accurate. For the **current** schema, tables, roles, and
+> RPCs, treat [CLAUDE.md](./CLAUDE.md) and [README.md](./README.md) §9 as
+> authoritative; this file's SQL/table-specific sections below describe the
+> pre-repurposing design and are kept for historical reference only.
 
 ## 1. System Overview
 

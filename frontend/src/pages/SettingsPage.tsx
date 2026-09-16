@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Avatar, Badge, Button, Field, Input } from "@/components/ui/primitives";
 import { ROLE_BADGE, ROLE_LABEL } from "@/lib/constants";
 import { AccessGovernance } from "@/features/settings/AccessGovernance";
+import { PipelineSettings } from "@/features/settings/PipelineSettings";
 
 export function SettingsPage() {
   const { user, updateLocalUser } = useAuth();
@@ -60,7 +61,7 @@ export function SettingsPage() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} />
               </Field>
               <Field label="Job title">
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Case Manager" />
+                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Business Development Manager" />
               </Field>
               <Field label="Phone">
                 <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(555) 010-0000" />
@@ -71,8 +72,8 @@ export function SettingsPage() {
             </div>
           </div>
           <div className="mt-4 flex items-center justify-between">
-            <Badge className={ROLE_BADGE[user?.role ?? "case_manager"]}>
-              {ROLE_LABEL[user?.role ?? "case_manager"]}
+            <Badge className={ROLE_BADGE[user?.role ?? "business_development"]}>
+              {ROLE_LABEL[user?.role ?? "business_development"]}
             </Badge>
             <Button onClick={saveProfile} loading={saving}>
               Save profile
@@ -80,6 +81,7 @@ export function SettingsPage() {
           </div>
         </section>
 
+        <PipelineSettings />
         <AccessGovernance />
       </div>
     </div>

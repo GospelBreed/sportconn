@@ -3,18 +3,18 @@ import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
 type Table =
-  | "cases"
-  | "residents"
+  | "leads"
+  | "facilities"
+  | "captains"
   | "activities"
   | "notifications"
-  | "properties"
-  | "leads"
   | "tasks"
-  | "outreach";
+  | "outreach"
+  | "campaigns";
 
 /**
- * Subscribe to Postgres changes on a `roseway` table and invalidate the given
- * query keys (debounced). Cleans up the channel on unmount.
+ * Subscribe to Postgres changes on a `sportconn` table and invalidate the
+ * given query keys (debounced). Cleans up the channel on unmount.
  */
 export function useRealtime(table: Table, keys: QueryKey[], enabled = true) {
   const qc = useQueryClient();
@@ -26,7 +26,7 @@ export function useRealtime(table: Table, keys: QueryKey[], enabled = true) {
       .channel(`rt-${table}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "roseway", table },
+        { event: "*", schema: "sportconn", table },
         () => {
           if (timer.current) clearTimeout(timer.current);
           timer.current = setTimeout(() => {

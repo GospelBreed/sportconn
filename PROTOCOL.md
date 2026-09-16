@@ -11,15 +11,17 @@
    `src/components/layout/`.
 4. **Server state = TanStack Query.** Never `useEffect`+`await supabase…` for
    server data. Query keys are arrays, centralized in the feature's hook file:
-   `['cases']`, `['case', id]`, `['residents', filters]`, `['resident', id]`,
-   `['properties', q]`, `['property', id]`, `['analytics-summary']`,
-   `['followups']`, `['notifications']`, `['users']`, `['activities']`.
+   `['leads', filters]`, `['lead', id]`, `['facilities', filters]`,
+   `['facility', id]`, `['captains', filters]`, `['captain', id]`,
+   `['pipelines']`, `['pipeline-stages', pipeline]`, `['dashboard-summary']`,
+   `['pipeline-metrics', pipeline]`, `['followups']`, `['notifications']`,
+   `['users']`, `['activities']`.
 5. **Mutations invalidate or roll back.** Every `useMutation` either
    `queryClient.invalidateQueries` for the affected keys, or does an optimistic
    `setQueryData` and restores the snapshot in `onError` (the pipeline board).
 6. **No raw hex in JSX.** Use Tailwind token classes (`bg-surface`, `text-ink`,
    `text-muted`, `border-line`, `text-primary`, `bg-primary-tint`). Tokens are
-   defined once in `tailwind.config.js`. The brand crimson is also mirrored to a
+   defined once in `tailwind.config.js`. The brand color is also mirrored to a
    CSS variable via `src/lib/branding.ts` so it can be reskinned in one place.
 7. **Accessibility.** Interactive elements are real `<button>`/`<a>`. Modals and
    the slide-over trap focus and close on `Esc`. Inputs have a `<label>` or
@@ -34,14 +36,14 @@
    wrapper: run the `supabase` call, `if (error) throw new Error(error.message)`,
    return `data`. No `supabase.from(...)` calls scattered in components.
 2. **Select only what you render**, and use PostgREST embeds for joins, e.g.
-   `.select('*, residents(id,full_name), properties(id,name), assignee:assigned_to(id,full_name)')`.
+   `.select('*, assignee:assigned_to(id,full_name), campaigns:campaign_id(id,name)')`.
 3. **Never** import or reference a service-role key in `frontend/`. Only
    `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` exist client-side.
 4. **Trust RLS, mirror it in UI.** Before rendering a mutating control, check
-   `useRole()`. A `read_only` user sees no add/edit/delete/drag affordances.
+   `useRole()`. A `viewer` user sees no add/edit/delete/drag affordances.
 5. **Let the database do server work.** Stage timestamps, activity logging,
-   assignment notifications, `property_id` backfill, analytics aggregation are
-   triggers / the RPC — do not re-implement them in the client.
+   assignment notifications, won/lost status derivation, and dashboard/pipeline
+   aggregation are triggers / RPCs — do not re-implement them in the client.
 6. **Realtime subscriptions** are created in a `useRealtime` hook, always cleaned
    up on unmount, and only `invalidateQueries` (never mutate cache directly from
    a socket payload). Debounce bursts (~250ms).
@@ -52,7 +54,8 @@
 - **Toasts**, never `alert` / `console.error`, for user-facing outcomes.
   `success` / `error` / `info`, auto-dismiss 4s, top-right.
 - **Confirm before destructive actions** via `<ConfirmDialog>` (red primary).
-  Resident delete for a case_manager is a soft delete (`status → 'former'`).
+  Marking a lead/facility Lost always requires a `lost_reason` — enforced by
+  the database trigger, not just the form.
 - **Debounce** search inputs at 300ms (`useDebounced`).
 - Forms validate client-side before the network call; disable submit while
   pending; show inline field errors; keep the entered values on failure.
@@ -61,19 +64,23 @@
 ## Naming
 - Components `PascalCase`; hooks `useCamelCase`; a file's name matches its
   primary export.
-- `db.ts` functions: `listCases`, `getCase`, `createCase`, `updateCase`,
-  `updateCaseStage`, `deleteCase`; same verb set for `residents`, `properties`.
+- `db.ts` functions: `listLeads`, `getLead`, `createLead`, `updateLead`,
+  `updateLeadStage`, `deleteLead`; same verb set for `facilities`, `captains`.
 - Query-key arrays as in rule 4 above. Realtime channel names:
-  `rt-cases`, `rt-activities`, `rt-notifications`.
+  `rt-leads`, `rt-facilities`, `rt-captains`, `rt-activities`, `rt-notifications`.
 
 ## SQL / Migrations
-1. **One schema: `roseway`.** Every object is `roseway.<name>`. Idempotent DDL
-   (`create table if not exists`, `drop policy if exists` before `create policy`,
-   `create or replace function`).
-2. **Enums as `CHECK` constraints**, not Postgres `enum` types (cheap to evolve).
+1. **One schema: `sportconn`.** Every object is `sportconn.<name>`. Idempotent
+   DDL (`create table if not exists`, `drop policy if exists` before
+   `create policy`, `create or replace function`).
+2. **Fixed enums (lead type, source, priority, temperature, …) as `CHECK`
+   constraints**, not Postgres `enum` types (cheap to evolve). **Pipeline
+   stages are NOT a CHECK constraint** — they're rows in
+   `sportconn.pipeline_stages`, editable at runtime via Settings. Never add a
+   stage list as a CHECK or a hardcoded TS union.
 3. **RLS enabled on every table** with explicit, named policies. New table ⇒ new
    policies in the same migration.
-4. Trigger functions are `security definer` with `set search_path = roseway, public`.
+4. Trigger functions are `security definer` with `set search_path = sportconn, public`.
 5. Migrations are **append-only** and numbered `NNNN_description.sql`. Never edit
    a migration that has been run against a shared database — add the next one.
 6. Keep `src/types/index.ts` in sync with the schema by hand; note the mapping in

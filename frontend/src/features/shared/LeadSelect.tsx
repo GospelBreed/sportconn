@@ -52,7 +52,7 @@ export function LeadSelect({
               className="block w-full px-3 py-2 text-left text-sm hover:bg-line/50"
             >
               <span className="font-medium text-ink">{l.full_name}</span>
-              <span className="ml-2 text-xs text-muted">{l.company_name ?? l.property_name}</span>
+              <span className="ml-2 text-xs text-muted">{l.company_name}</span>
             </button>
           ))}
         </div>

@@ -115,7 +115,7 @@ export function ConfirmDialog({
   onClose: () => void;
   onConfirm: () => void;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   tone?: "danger" | "primary";
   loading?: boolean;
@@ -133,7 +133,7 @@ export function ConfirmDialog({
         </div>
         <div className="space-y-1">
           <h3 className="text-base font-semibold text-ink">{title}</h3>
-          <p className="text-sm text-muted">{message}</p>
+          <div className="text-sm text-muted">{message}</div>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>

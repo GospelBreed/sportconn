@@ -1,17 +1,6 @@
 import { normalizeHeader } from "@/lib/csv";
-import {
-  LEAD_SOURCE_LABEL,
-  LEAD_STAGE_LABEL,
-  PROPERTY_TYPE_LABEL,
-  TEMPERATURE_META,
-} from "@/lib/constants";
-import type {
-  Lead,
-  LeadSource,
-  LeadStage,
-  LeadTemperature,
-  PropertyType,
-} from "@/types";
+import { LEAD_SOURCE_LABEL, LEAD_TYPE_LABEL, PIPELINE_LABEL, TEMPERATURE_META } from "@/lib/constants";
+import type { Lead, LeadSource, LeadType, PipelineKey, Temperature } from "@/types";
 
 /** The importable / exportable columns, in order. */
 export interface LeadCsvColumn {
@@ -26,50 +15,54 @@ export const LEAD_CSV_COLUMNS: LeadCsvColumn[] = [
   { key: "full_name", header: "full_name", required: true, note: "Contact person's full name.", example: "Sarah Johnson" },
   { key: "title", header: "title", note: "Job title.", example: "Facility Manager" },
   { key: "email", header: "email", note: "Contact email.", example: "s.johnson@titansports.com" },
-  { key: "phone", header: "phone", note: "Any format.", example: "(972) 555-0184" },
+  { key: "phone", header: "phone", note: "Any format.", example: "+234 803 555 0184" },
+  { key: "whatsapp", header: "whatsapp", note: "Any format. Blank allowed.", example: "+234 803 555 0184" },
   { key: "linkedin_url", header: "linkedin_url", note: "Full URL.", example: "https://linkedin.com/in/sjohnson" },
-  { key: "company_name", header: "company_name", note: "Management company.", example: "Titan Sports Group" },
-  { key: "property_name", header: "property_name", note: "Facility name (free text).", example: "Downtown Sports Complex" },
-  { key: "location_city", header: "location_city", note: "City.", example: "Plano" },
-  { key: "location_state", header: "location_state", note: "2-letter state.", example: "TX" },
-  { key: "unit_count", header: "unit_count", note: "Whole number ≥ 0.", example: "420" },
+  { key: "company_name", header: "company_name", note: "Organization / brand name.", example: "Titan Sports Group" },
   {
-    key: "asset_type",
-    header: "asset_type",
-    note: "One of: conventional, luxury, senior, affordable, mixed_use (labels like \"Senior Living\" also accepted). Default: conventional.",
-    example: "conventional",
+    key: "lead_type",
+    header: "lead_type",
+    note: "One of: sponsor, investor, facility, sports_brand, coach, academy, captain, athlete, community, tournament_organizer, strategic_partner, media_partner, corporate_partner, other. Default: other.",
+    example: "sponsor",
   },
+  {
+    key: "pipeline",
+    header: "pipeline",
+    note: "One of: sponsor, investor, strategic_partnership, user_acquisition. Default: sponsor.",
+    example: "sponsor",
+  },
+  { key: "location_city", header: "location_city", note: "City.", example: "Lagos" },
+  { key: "location_country", header: "location_country", note: "Country.", example: "Nigeria" },
   {
     key: "temperature",
     header: "temperature",
-    note: "One of: hot, warm, cold. Default: warm.",
+    note: "One of: hot, warm, cold, at_risk. Default: warm.",
     example: "hot",
   },
-  { key: "experience_score", header: "experience_score", note: "Integer 0–100. Blank allowed.", example: "68" },
   {
-    key: "stage",
-    header: "stage",
-    note: 'One of: new_lead, contacted, qualified, discovery, proposal, pilot, closed_won, closed_lost (labels like "Discovery Call" also accepted). Default: new_lead.',
-    example: "qualified",
+    key: "priority",
+    header: "priority",
+    note: "One of: high, medium, low. Default: medium.",
+    example: "high",
   },
   {
     key: "source",
     header: "source",
-    note: "One of: res_exp_check, cold_email, linkedin, referral, website, import, other. Default: import.",
-    example: "cold_email",
+    note: "One of: field_sales, referral, website, social_media, linkedin, instagram, facebook, whatsapp, email, event, campaign, existing_network, investor_outreach, sponsor_outreach, facility_outreach, organic, other. Default: import.",
+    example: "referral",
   },
-  { key: "estimated_arr", header: "estimated_arr", note: "Annual USD value. $ and commas are stripped. Default: 0.", example: "18000" },
+  { key: "expected_value", header: "expected_value", note: "Numeric. $ and commas are stripped. Blank allowed.", example: "10000000" },
   {
     key: "next_follow_up_at",
     header: "next_follow_up_at",
     note: "Date or datetime — YYYY-MM-DD, MM/DD/YYYY, or ISO 8601. Blank allowed.",
-    example: "2025-10-15",
+    example: "2026-10-15",
   },
-  { key: "notes", header: "notes", note: "Free text.", example: "Downloaded checklist; wants to loop in Regional VP." },
+  { key: "notes", header: "notes", note: "Free text.", example: "Met at grassroots tournament; wants a proposal." },
 ];
 
 // Columns added on export only (ignored on import).
-export const LEAD_CSV_EXPORT_EXTRA = ["id", "created_at", "last_activity_at"];
+export const LEAD_CSV_EXPORT_EXTRA = ["id", "stage", "status", "created_at", "last_activity_at"];
 
 const HEADER_ALIASES: Record<string, string> = {
   fullname: "full_name",
@@ -84,41 +77,34 @@ const HEADER_ALIASES: Record<string, string> = {
   phonenumber: "phone",
   mobile: "phone",
   cell: "phone",
+  wa: "whatsapp",
+  whatsappnumber: "whatsapp",
   linkedin: "linkedin_url",
   linkedinurl: "linkedin_url",
   company: "company_name",
   companyname: "company_name",
-  managementcompany: "company_name",
   organization: "company_name",
   account: "company_name",
-  property: "property_name",
-  propertyname: "property_name",
-  community: "property_name",
-  communityname: "property_name",
+  brand: "company_name",
+  type: "lead_type",
+  leadtype: "lead_type",
+  category: "lead_type",
+  pipeline: "pipeline",
+  pipelinetype: "pipeline",
   city: "location_city",
   locationcity: "location_city",
-  state: "location_state",
-  locationstate: "location_state",
-  units: "unit_count",
-  unitcount: "unit_count",
-  doors: "unit_count",
-  assettype: "asset_type",
-  type: "asset_type",
+  country: "location_country",
+  locationcountry: "location_country",
   temp: "temperature",
   temperature: "temperature",
-  experiencescore: "experience_score",
-  score: "experience_score",
-  resexpscore: "experience_score",
-  stage: "stage",
-  pipelinestage: "stage",
-  status: "stage",
+  priority: "priority",
   source: "source",
   leadsource: "source",
   channel: "source",
-  arr: "estimated_arr",
-  estimatedarr: "estimated_arr",
-  value: "estimated_arr",
-  annualvalue: "estimated_arr",
+  value: "expected_value",
+  expectedvalue: "expected_value",
+  dealvalue: "expected_value",
+  amount: "expected_value",
   followup: "next_follow_up_at",
   nextfollowup: "next_follow_up_at",
   nextfollowupat: "next_follow_up_at",
@@ -149,30 +135,19 @@ function pickEnum<T extends string>(
   return null;
 }
 
-const ASSET_TYPES: PropertyType[] = ["conventional", "luxury", "senior", "affordable", "mixed_use"];
-const TEMPS: LeadTemperature[] = ["hot", "warm", "cold"];
-const STAGES: LeadStage[] = [
-  "new_lead",
-  "contacted",
-  "qualified",
-  "discovery",
-  "proposal",
-  "pilot",
-  "closed_won",
-  "closed_lost",
+const LEAD_TYPES: LeadType[] = [
+  "sponsor","investor","facility","sports_brand","coach","academy","captain","athlete",
+  "community","tournament_organizer","strategic_partner","media_partner","corporate_partner","other",
 ];
+const PIPELINES: PipelineKey[] = ["sponsor", "investor", "strategic_partnership", "user_acquisition"];
+const TEMPS: Temperature[] = ["hot", "warm", "cold", "at_risk"];
 const SOURCES: LeadSource[] = [
-  "res_exp_check",
-  "cold_email",
-  "linkedin",
-  "referral",
-  "website",
-  "import",
-  "other",
+  "field_sales","referral","website","social_media","linkedin","instagram","facebook","whatsapp",
+  "email","event","campaign","existing_network","investor_outreach","sponsor_outreach",
+  "facility_outreach","organic","import","other",
 ];
-const TEMP_LABELS = Object.fromEntries(
-  TEMPS.map((t) => [t, TEMPERATURE_META[t].label]),
-) as Record<LeadTemperature, string>;
+const TEMP_LABELS = Object.fromEntries(TEMPS.map((t) => [t, TEMPERATURE_META[t].label])) as Record<Temperature, string>;
+const PIPELINE_LABELS = Object.fromEntries(PIPELINES.map((p) => [p, PIPELINE_LABEL[p]])) as Record<PipelineKey, string>;
 
 export interface RowResult {
   payload: Partial<Lead> | null;
@@ -188,39 +163,32 @@ export function csvRowToLead(record: Record<string, string>): RowResult {
   const full_name = get("full_name");
   if (!full_name) errors.push("full_name is required");
 
-  const payload: Partial<Lead> = { full_name, source: "import" };
+  const payload: Partial<Lead> = { full_name, source: "import", pipeline: "sponsor" };
 
-  for (const k of ["title", "email", "phone", "linkedin_url", "company_name", "property_name", "location_city", "location_state", "notes"] as const) {
+  for (const k of ["title", "email", "phone", "whatsapp", "linkedin_url", "company_name", "location_city", "location_country", "notes"] as const) {
     const v = get(k);
     if (v) (payload as Record<string, unknown>)[k] = v;
   }
 
-  const units = get("unit_count");
-  if (units) {
-    const n = Number(units.replace(/[^0-9.\-]/g, ""));
-    if (Number.isFinite(n) && n >= 0) payload.unit_count = Math.round(n);
-    else warnings.push(`unit_count "${units}" ignored`);
+  const leadType = get("lead_type");
+  if (leadType) {
+    const v = pickEnum(leadType, LEAD_TYPES, LEAD_TYPE_LABEL);
+    if (v) payload.lead_type = v;
+    else warnings.push(`lead_type "${leadType}" not recognized — using other`);
   }
 
-  const arr = get("estimated_arr");
-  if (arr) {
-    const n = Number(arr.replace(/[^0-9.\-]/g, ""));
-    if (Number.isFinite(n) && n >= 0) payload.estimated_arr = n;
-    else warnings.push(`estimated_arr "${arr}" ignored`);
+  const pipeline = get("pipeline");
+  if (pipeline) {
+    const v = pickEnum(pipeline, PIPELINES, PIPELINE_LABELS);
+    if (v) payload.pipeline = v;
+    else warnings.push(`pipeline "${pipeline}" not recognized — using sponsor`);
   }
 
-  const score = get("experience_score");
-  if (score) {
-    const n = Number(score.replace(/[^0-9.\-]/g, ""));
-    if (Number.isFinite(n) && n >= 0 && n <= 100) payload.experience_score = Math.round(n);
-    else warnings.push(`experience_score "${score}" ignored (need 0–100)`);
-  }
-
-  const at = get("asset_type");
-  if (at) {
-    const v = pickEnum(at, ASSET_TYPES, PROPERTY_TYPE_LABEL);
-    if (v) payload.asset_type = v;
-    else warnings.push(`asset_type "${at}" not recognized — using conventional`);
+  const value = get("expected_value");
+  if (value) {
+    const n = Number(value.replace(/[^0-9.\-]/g, ""));
+    if (Number.isFinite(n) && n >= 0) payload.expected_value = n;
+    else warnings.push(`expected_value "${value}" ignored`);
   }
 
   const temp = get("temperature");
@@ -230,11 +198,11 @@ export function csvRowToLead(record: Record<string, string>): RowResult {
     else warnings.push(`temperature "${temp}" not recognized — using warm`);
   }
 
-  const stage = get("stage");
-  if (stage) {
-    const v = pickEnum(stage, STAGES, LEAD_STAGE_LABEL);
-    if (v) payload.stage = v;
-    else warnings.push(`stage "${stage}" not recognized — using new_lead`);
+  const priority = get("priority");
+  if (priority) {
+    const n = normalizeHeader(priority);
+    if (n === "high" || n === "medium" || n === "low") payload.priority = n;
+    else warnings.push(`priority "${priority}" not recognized — using medium`);
   }
 
   const source = get("source");
@@ -262,21 +230,22 @@ export function leadsToCsvRows(leads: Lead[]): { headers: string[]; rows: unknow
     l.title ?? "",
     l.email ?? "",
     l.phone ?? "",
+    l.whatsapp ?? "",
     l.linkedin_url ?? "",
     l.company_name ?? "",
-    l.property_name ?? "",
+    l.lead_type,
+    l.pipeline,
     l.location_city ?? "",
-    l.location_state ?? "",
-    l.unit_count ?? "",
-    l.asset_type,
+    l.location_country ?? "",
     l.temperature,
-    l.experience_score ?? "",
-    l.stage,
+    l.priority,
     l.source,
-    l.estimated_arr ?? 0,
+    l.expected_value ?? "",
     l.next_follow_up_at ? l.next_follow_up_at.slice(0, 10) : "",
     l.notes ?? "",
     l.id,
+    l.stage,
+    l.status,
     l.created_at,
     l.last_activity_at,
   ]);

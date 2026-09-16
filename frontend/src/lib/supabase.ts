@@ -14,7 +14,7 @@ if (!supabaseConfigured) {
 }
 
 /**
- * Single browser Supabase client. All Roseway tables live in the `roseway`
+ * Single browser Supabase client. All SportConn tables live in the `sportconn`
  * Postgres schema, so PostgREST calls are pinned to it here.
  */
 export const supabase = createClient(url ?? "http://localhost", anon ?? "public-anon-key", {
@@ -23,5 +23,5 @@ export const supabase = createClient(url ?? "http://localhost", anon ?? "public-
     autoRefreshToken: true,
     detectSessionInUrl: true,
   },
-  db: { schema: "roseway" },
+  db: { schema: "sportconn" },
 });

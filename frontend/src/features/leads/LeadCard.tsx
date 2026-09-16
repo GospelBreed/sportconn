@@ -1,10 +1,11 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
-import { daysInStage } from "@/lib/format";
+import { daysInStage, formatDate } from "@/lib/format";
 import { Icon } from "@/components/ui/Icon";
-import { ExperienceScore, FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
-import { formatCompactUsd } from "@/lib/money";
+import { AtRiskFlag, FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
+import { formatCompactMoney } from "@/lib/money";
+import { LEAD_TYPE_LABEL } from "@/lib/constants";
 import type { Lead } from "@/types";
 
 export function LeadCard({
@@ -21,6 +22,7 @@ export function LeadCard({
     disabled: dragDisabled,
   });
   const days = daysInStage(lead.stage_entered_at);
+  const isUserAcq = lead.pipeline === "user_acquisition";
 
   return (
     <div
@@ -34,15 +36,12 @@ export function LeadCard({
     >
       <div className="flex items-start justify-between gap-2">
         <button onClick={() => onOpen(lead.id)} className="min-w-0 flex-1 text-left">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-            {lead.company_name ?? "—"}
-          </p>
           <p className="truncate text-sm font-semibold text-ink">
-            {lead.property_name ?? lead.full_name}
+            {lead.company_name || lead.full_name}
           </p>
           <p className="truncate text-xs text-muted">
-            {lead.full_name}
-            {lead.title ? ` · ${lead.title}` : ""}
+            {LEAD_TYPE_LABEL[lead.lead_type]}
+            {lead.company_name ? ` · ${lead.full_name}` : ""}
           </p>
         </button>
         {!dragDisabled && (
@@ -58,26 +57,42 @@ export function LeadCard({
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-ink">{formatCompactUsd(lead.estimated_arr)}/yr</span>
+        {isUserAcq ? (
+          <span className="text-sm font-bold text-ink">
+            {lead.actual_users ?? 0}/{lead.target_users ?? "—"} users
+          </span>
+        ) : (
+          <span className="text-sm font-bold text-ink">
+            {formatCompactMoney(lead.expected_value, lead.currency)}
+          </span>
+        )}
         <TemperatureBadge temperature={lead.temperature} />
       </div>
 
-      <div className="mt-2 flex items-center justify-between border-t border-line pt-2">
-        <span className="flex items-center gap-1 text-[11px] text-muted">
-          <Icon name="properties" size={12} />
-          {lead.unit_count ? `${lead.unit_count} units` : "—"}
-        </span>
-        {lead.experience_score != null ? (
-          <ExperienceScore score={lead.experience_score} />
-        ) : (
-          <span className="text-[11px] text-muted">{days}d in stage</span>
-        )}
+      {isUserAcq && lead.target_users ? (
+        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-line">
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${Math.min(100, Math.round(((lead.actual_users ?? 0) / lead.target_users) * 100))}%` }}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-2 flex items-center justify-between border-t border-line pt-2 text-[11px] text-muted">
+        <span className="truncate">{lead.assignee?.full_name ?? "Unassigned"}</span>
+        <span className="truncate">{lead.location_city ?? "—"}</span>
       </div>
 
-      <div className="mt-1.5 flex items-center justify-between">
+      <div className="mt-1.5 flex items-center justify-between gap-1">
         <span className="text-[11px] text-muted">{days}d in stage</span>
-        <FollowupBadge at={lead.next_follow_up_at} />
+        <div className="flex items-center gap-1">
+          <AtRiskFlag stageEnteredAt={lead.stage_entered_at} />
+          <FollowupBadge at={lead.next_follow_up_at} />
+        </div>
       </div>
+      {lead.next_follow_up_at && (
+        <p className="mt-1 text-[11px] text-muted">Next: {formatDate(lead.next_follow_up_at)}</p>
+      )}
     </div>
   );
 }

@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import {
-  useCases,
-  useDeleteTask,
-  useLeadPipeline,
-  useTasks,
-  useUpdateTask,
-} from "@/hooks/queries";
+import { useDeleteTask, useFollowups, useTasks, useUpdateTask } from "@/hooks/queries";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useRole } from "@/lib/auth";
 import { useToast } from "@/components/ui/Toast";
@@ -18,9 +12,9 @@ import { ConfirmDialog } from "@/components/ui/overlays";
 import { PriorityBadge } from "@/components/ui/badges";
 import { cn } from "@/lib/cn";
 import { followupBucket, formatDateTime } from "@/lib/format";
-import { ACTIVE_STAGES, FOLLOWUP_META, LEAD_ACTIVE_STAGES } from "@/lib/constants";
+import { FOLLOWUP_BUCKET_META } from "@/lib/constants";
 import { AddTaskModal } from "@/features/tasks/AddTaskModal";
-import type { Task } from "@/types";
+import type { Lead, Facility, Task } from "@/types";
 
 const BUCKETS = [
   { key: "overdue", title: "Overdue" },
@@ -33,8 +27,7 @@ export function TasksPage() {
   const { canWrite } = useRole();
   const navigate = useNavigate();
   const { data: tasks, isLoading, isError, refetch } = useTasks(true);
-  const { data: leads } = useLeadPipeline();
-  const { data: cases } = useCases();
+  const { data: followups } = useFollowups();
   const update = useUpdateTask();
   const del = useDeleteTask();
   const toast = useToast();
@@ -53,8 +46,8 @@ export function TasksPage() {
     }
   }, [params, canWrite, setParams]);
 
-  const open = useMemo(() => (tasks ?? []).filter((t) => t.status === "open"), [tasks]);
-  const done = useMemo(() => (tasks ?? []).filter((t) => t.status === "done"), [tasks]);
+  const open = useMemo(() => (tasks ?? []).filter((t) => t.status !== "completed" && t.status !== "cancelled"), [tasks]);
+  const done = useMemo(() => (tasks ?? []).filter((t) => t.status === "completed"), [tasks]);
 
   const grouped = useMemo(() => {
     const g: Record<string, Task[]> = { overdue: [], today: [], upcoming: [], later: [] };
@@ -69,37 +62,24 @@ export function TasksPage() {
   }, [open]);
 
   const pipelineFollowups = useMemo(() => {
-    const rows: { id: string; label: string; sub: string; at: string; to: string }[] = [];
-    (leads ?? [])
-      .filter((l) => LEAD_ACTIVE_STAGES.includes(l.stage) && l.next_follow_up_at)
-      .forEach((l) =>
-        rows.push({
-          id: `lead-${l.id}`,
-          label: l.property_name ?? l.full_name,
-          sub: `Lead · ${l.company_name ?? "—"}`,
-          at: l.next_follow_up_at as string,
-          to: `/leads?focus=${l.id}`,
-        }),
-      );
-    (cases ?? [])
-      .filter((c) => ACTIVE_STAGES.includes(c.stage) && c.next_follow_up_at)
-      .forEach((c) =>
-        rows.push({
-          id: `case-${c.id}`,
-          label: c.title,
-          sub: `Case · ${c.residents?.full_name ?? c.properties?.name ?? "—"}`,
-          at: c.next_follow_up_at as string,
-          to: `/cases?case=${c.id}`,
-        }),
-      );
-    return rows
-      .filter((r) => ["overdue", "today", "upcoming"].includes(followupBucket(r.at)))
-      .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-  }, [leads, cases]);
+    return (followups ?? [])
+      .filter((f) => ["overdue", "today", "upcoming"].includes(f.bucket))
+      .map((f) => {
+        const isLead = f.kind === "lead";
+        const record = f.record as Lead & Facility;
+        return {
+          id: `${f.kind}-${record.id}`,
+          label: isLead ? record.full_name : record.name,
+          sub: isLead ? `Lead · ${record.company_name ?? "—"}` : `Facility · ${record.city ?? "—"}`,
+          at: record.next_follow_up_at as string,
+          to: isLead ? `/leads?focus=${record.id}` : `/facilities/${record.id}`,
+        };
+      });
+  }, [followups]);
 
   const complete = (t: Task) =>
     update.mutate(
-      { id: t.id, body: { status: t.status === "done" ? "open" : "done" } },
+      { id: t.id, body: { status: t.status === "completed" ? "to_do" : "completed" } },
       { onError: (e) => toast.error(e instanceof Error ? e.message : "Failed") },
     );
 
@@ -118,7 +98,7 @@ export function TasksPage() {
   return (
     <div className="p-5 sm:p-6">
       <PageHeader
-        eyebrow="Operations"
+        eyebrow="Activity"
         title="Tasks"
         subtitle={`${grouped.overdue.length} overdue · ${grouped.today.length} due today · ${open.length} open`}
         actions={
@@ -144,7 +124,7 @@ export function TasksPage() {
                 <EmptyState
                   icon={<Icon name="check" />}
                   title="No open tasks"
-                  subtitle="Create a task or set a follow-up on a lead or case."
+                  subtitle="You're all caught up. Create a task or set a follow-up on a lead or facility."
                 />
               </div>
             )}
@@ -156,7 +136,7 @@ export function TasksPage() {
                 <section key={b.key}>
                   <div className="mb-2 flex items-center gap-2">
                     {b.key !== "later" && (
-                      <span className={cn("h-2 w-2 rounded-full", FOLLOWUP_META[b.key].dot)} />
+                      <span className={cn("h-2 w-2 rounded-full", FOLLOWUP_BUCKET_META[b.key].dot)} />
                     )}
                     <h2 className="text-sm font-semibold text-ink">{b.title}</h2>
                     <span className="rounded-control bg-line px-1.5 py-0.5 text-[10px] font-semibold text-muted">
@@ -176,7 +156,7 @@ export function TasksPage() {
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-ink">{t.title}</p>
                             <p className="text-xs text-muted">
-                              {t.leads?.company_name ?? t.leads?.full_name ?? t.residents?.full_name ?? t.cases?.title ?? "General"}
+                              {t.leads?.company_name ?? t.leads?.full_name ?? t.facilities?.name ?? t.captains?.full_name ?? "General"}
                               {t.due_at ? ` · ${formatDateTime(t.due_at)}` : ""}
                               {t.assignee ? ` · ${t.assignee.full_name}` : ""}
                             </p>
@@ -191,6 +171,11 @@ export function TasksPage() {
                               </Button>
                               {t.lead_id && (
                                 <Button size="sm" variant="ghost" onClick={() => navigate(`/leads?focus=${t.lead_id}`)}>
+                                  Open
+                                </Button>
+                              )}
+                              {t.facility_id && (
+                                <Button size="sm" variant="ghost" onClick={() => navigate(`/facilities/${t.facility_id}`)}>
                                   Open
                                 </Button>
                               )}
@@ -234,7 +219,7 @@ export function TasksPage() {
                       <span
                         className={cn(
                           "shrink-0 rounded-control px-1.5 py-0.5 text-[10px] font-semibold",
-                          FOLLOWUP_META[followupBucket(r.at) as "overdue" | "today" | "upcoming"].badge,
+                          FOLLOWUP_BUCKET_META[followupBucket(r.at) as "overdue" | "today" | "upcoming"].badge,
                         )}
                       >
                         {formatDateTime(r.at)}

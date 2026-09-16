@@ -4,186 +4,223 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import * as db from "@/lib/db";
-import { ACTIVE_STAGES } from "@/lib/constants";
 import { followupBucket, type FollowupBucket } from "@/lib/format";
 import type {
   Campaign,
-  Case,
+  Captain,
+  Facility,
   Lead,
-  Property,
-  Resident,
+  Outreach,
+  PipelineKey,
+  PipelineStageDef,
   RolePermissions,
   Task,
   UserRole,
 } from "@/types";
 
-// ======================= CASES =======================
-export const casesKey = ["cases"] as const;
-
-export function useCases() {
-  return useQuery({ queryKey: casesKey, queryFn: db.listCases });
+// ======================= PIPELINES / STAGES =======================
+export function usePipelines() {
+  return useQuery({ queryKey: ["pipelines"], queryFn: db.listPipelines, staleTime: 5 * 60_000 });
 }
 
-export function useCase(id: string | null) {
+export function usePipelineStages(pipeline?: PipelineKey) {
   return useQuery({
-    queryKey: ["case", id],
-    queryFn: () => db.getCase(id as string),
+    queryKey: ["pipeline-stages", pipeline ?? "all"],
+    queryFn: () => db.listPipelineStages(pipeline),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useCreatePipelineStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<PipelineStageDef>) => db.createPipelineStage(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages"] }),
+  });
+}
+
+export function useUpdatePipelineStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<PipelineStageDef> }) =>
+      db.updatePipelineStage(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages"] }),
+  });
+}
+
+export function useDeletePipelineStage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deletePipelineStage(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pipeline-stages"] }),
+  });
+}
+
+// ======================= LEADS (Sponsor/Investor/Partnership/User Acq.) =======================
+export const leadsKey = ["leads"] as const;
+
+export function useLeads(filters: db.LeadFilters = {}) {
+  return useQuery({ queryKey: ["leads", filters], queryFn: () => db.listLeads(filters) });
+}
+
+export function useLeadDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["lead", id],
+    queryFn: () => db.getLeadDetail(id as string),
     enabled: !!id,
   });
 }
 
-export function useCreateCase() {
+export function useCreateLead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Case>) => db.createCase(body),
+    mutationFn: (body: Partial<Lead>) => db.createLead(body),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: casesKey });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
-      qc.invalidateQueries({ queryKey: ["activities"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-metrics"] });
     },
   });
 }
 
-export function useUpdateCase() {
+export function useUpdateLead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Case> }) => db.updateCase(id, body),
+    mutationFn: ({ id, body }: { id: string; body: Partial<Lead> }) => db.updateLead(id, body),
     onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: casesKey });
-      qc.invalidateQueries({ queryKey: ["case", v.id] });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["lead", v.id] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-metrics"] });
     },
   });
 }
 
-export function useDeleteCase() {
+export function useDeleteLead() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => db.deleteCase(id),
+    mutationFn: (id: string) => db.deleteLead(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: casesKey });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
+      qc.invalidateQueries({ queryKey: ["leads"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
     },
   });
 }
 
-// ======================= FOLLOW-UPS (derived from cases) =======================
+// ======================= FACILITIES =======================
+export function useFacilities(filters: db.FacilityFilters = {}) {
+  return useQuery({ queryKey: ["facilities", filters], queryFn: () => db.listFacilities(filters) });
+}
+
+export function useFacilityDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["facility", id],
+    queryFn: () => db.getFacilityDetail(id as string),
+    enabled: !!id,
+  });
+}
+
+export function useCreateFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Facility>) => db.createFacility(body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["facilities"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+  });
+}
+
+export function useUpdateFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<Facility> }) => db.updateFacility(id, body),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["facilities"] });
+      qc.invalidateQueries({ queryKey: ["facility", v.id] });
+      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
+    },
+  });
+}
+
+export function useDeleteFacility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deleteFacility(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["facilities"] }),
+  });
+}
+
+// ======================= CAPTAINS & COMMUNITIES =======================
+export function useCaptains(filters: db.CaptainFilters = {}) {
+  return useQuery({ queryKey: ["captains", filters], queryFn: () => db.listCaptains(filters) });
+}
+
+export function useCaptainDetail(id: string | null) {
+  return useQuery({
+    queryKey: ["captain", id],
+    queryFn: () => db.getCaptainDetail(id as string),
+    enabled: !!id,
+  });
+}
+
+export function useCreateCaptain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Captain>) => db.createCaptain(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["captains"] }),
+  });
+}
+
+export function useUpdateCaptain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<Captain> }) => db.updateCaptain(id, body),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["captains"] });
+      qc.invalidateQueries({ queryKey: ["captain", v.id] });
+    },
+  });
+}
+
+export function useDeleteCaptain() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deleteCaptain(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["captains"] }),
+  });
+}
+
+// ======================= FOLLOW-UPS (derived from leads + facilities) =======================
 export interface FollowupItem {
-  case: Case;
+  kind: "lead" | "facility";
+  record: Lead | Facility;
   bucket: Exclude<FollowupBucket, "none">;
 }
 
 export function useFollowups() {
-  return useQuery({
-    queryKey: casesKey,
-    queryFn: db.listCases,
-    select: (cases): FollowupItem[] =>
-      cases
-        .filter((c) => ACTIVE_STAGES.includes(c.stage) && c.next_follow_up_at)
-        .map((c) => ({ case: c, bucket: followupBucket(c.next_follow_up_at) }))
-        .filter((f): f is FollowupItem => f.bucket !== "none")
-        .sort(
-          (a, b) =>
-            new Date(a.case.next_follow_up_at as string).getTime() -
-            new Date(b.case.next_follow_up_at as string).getTime(),
-        ),
-  });
-}
-
-// ======================= RESIDENTS =======================
-export function useResidents(filters: db.ResidentFilters = {}) {
-  return useQuery({
-    queryKey: ["residents", filters],
-    queryFn: () => db.listResidents(filters),
-  });
-}
-
-export function useResidentDetail(id: string | null) {
-  return useQuery({
-    queryKey: ["resident", id],
-    queryFn: () => db.getResidentDetail(id as string),
-    enabled: !!id,
-  });
-}
-
-export function useCreateResident() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<Resident>) => db.createResident(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["residents"] });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
-      qc.invalidateQueries({ queryKey: ["activities"] });
-    },
-  });
-}
-
-export function useUpdateResident() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Resident> }) =>
-      db.updateResident(id, body),
-    onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["residents"] });
-      qc.invalidateQueries({ queryKey: ["resident", v.id] });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
-    },
-  });
-}
-
-export function useDeleteResident() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => db.deleteResident(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["residents"] });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
-    },
-  });
-}
-
-// ======================= PROPERTIES =======================
-export function useProperties(q = "") {
-  return useQuery({ queryKey: ["properties", q], queryFn: () => db.listProperties(q) });
-}
-
-export function usePropertyDetail(id: string | null) {
-  return useQuery({
-    queryKey: ["property", id],
-    queryFn: () => db.getPropertyDetail(id as string),
-    enabled: !!id,
-  });
-}
-
-export function useCreateProperty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<Property>) => db.createProperty(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["properties"] });
-      qc.invalidateQueries({ queryKey: ["analytics-summary"] });
-    },
-  });
-}
-
-export function useUpdateProperty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Property> }) =>
-      db.updateProperty(id, body),
-    onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["properties"] });
-      qc.invalidateQueries({ queryKey: ["property", v.id] });
-    },
-  });
-}
-
-export function useDeleteProperty() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => db.deleteProperty(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["properties"] }),
-  });
+  const leadsQ = useLeads();
+  const facilitiesQ = useFacilities();
+  const raw: { kind: "lead" | "facility"; record: Lead | Facility; bucket: FollowupBucket }[] = [
+    ...(leadsQ.data ?? [])
+      .filter((l) => l.status === "open" && l.next_follow_up_at)
+      .map((l) => ({ kind: "lead" as const, record: l as Lead | Facility, bucket: followupBucket(l.next_follow_up_at) })),
+    ...(facilitiesQ.data ?? [])
+      .filter((f) => f.status === "open" && f.next_follow_up_at)
+      .map((f) => ({ kind: "facility" as const, record: f as Lead | Facility, bucket: followupBucket(f.next_follow_up_at) })),
+  ];
+  const items: FollowupItem[] = raw
+    .filter((f): f is FollowupItem => f.bucket !== "none")
+    .sort(
+      (a, b) =>
+        new Date(a.record.next_follow_up_at as string).getTime() -
+        new Date(b.record.next_follow_up_at as string).getTime(),
+    );
+  return {
+    data: items,
+    isLoading: leadsQ.isLoading || facilitiesQ.isLoading,
+    isError: leadsQ.isError || facilitiesQ.isError,
+  };
 }
 
 // ======================= ACTIVITIES =======================
@@ -242,15 +279,7 @@ export function useManageUsers() {
   });
 }
 
-// ======================= ANALYTICS =======================
-export function useAnalytics() {
-  return useQuery({
-    queryKey: ["analytics-summary"],
-    queryFn: db.getAnalyticsSummary,
-    refetchInterval: 60_000,
-  });
-}
-
+// ======================= DASHBOARD / REPORTING =======================
 export function useDashboard() {
   return useQuery({
     queryKey: ["dashboard-summary"],
@@ -259,56 +288,10 @@ export function useDashboard() {
   });
 }
 
-// ======================= LEADS =======================
-export const leadsKey = ["leads"] as const;
-
-export function useLeads(filters: db.LeadFilters = {}) {
-  return useQuery({ queryKey: ["leads", filters], queryFn: () => db.listLeads(filters) });
-}
-
-export function useLeadPipeline() {
-  return useQuery({ queryKey: leadsKey, queryFn: () => db.listLeads() });
-}
-
-export function useLeadDetail(id: string | null) {
+export function usePipelineMetrics(pipeline?: string) {
   return useQuery({
-    queryKey: ["lead", id],
-    queryFn: () => db.getLeadDetail(id as string),
-    enabled: !!id,
-  });
-}
-
-export function useCreateLead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<Lead>) => db.createLead(body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
-    },
-  });
-}
-
-export function useUpdateLead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, body }: { id: string; body: Partial<Lead> }) => db.updateLead(id, body),
-    onSuccess: (_d, v) => {
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["lead", v.id] });
-      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
-    },
-  });
-}
-
-export function useDeleteLead() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => db.deleteLead(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leads"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
-    },
+    queryKey: ["pipeline-metrics", pipeline ?? "all"],
+    queryFn: () => db.getPipelineMetrics(pipeline),
   });
 }
 
@@ -336,6 +319,8 @@ export function useUpdateTask() {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
       if (updated?.lead_id) qc.invalidateQueries({ queryKey: ["lead", updated.lead_id] });
+      if (updated?.facility_id) qc.invalidateQueries({ queryKey: ["facility", updated.facility_id] });
+      if (updated?.captain_id) qc.invalidateQueries({ queryKey: ["captain", updated.captain_id] });
     },
   });
 }
@@ -351,6 +336,20 @@ export function useDeleteTask() {
 // ======================= OUTREACH =======================
 export function useOutreach(limit = 100) {
   return useQuery({ queryKey: ["outreach", limit], queryFn: () => db.listOutreach(limit) });
+}
+
+export function useCreateOutreach() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<Outreach>) => db.createOutreach(body),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["outreach"] });
+      qc.invalidateQueries({ queryKey: ["activities"] });
+      if (created?.lead_id) qc.invalidateQueries({ queryKey: ["lead", created.lead_id] });
+      if (created?.facility_id) qc.invalidateQueries({ queryKey: ["facility", created.facility_id] });
+      if (created?.captain_id) qc.invalidateQueries({ queryKey: ["captain", created.captain_id] });
+    },
+  });
 }
 
 // ======================= CAMPAIGNS =======================
@@ -375,7 +374,10 @@ export function useUpdateCampaign() {
   });
 }
 
-// ======================= ASSESSMENTS =======================
-export function useAssessments() {
-  return useQuery({ queryKey: ["assessments"], queryFn: db.listAssessments });
+export function useDeleteCampaign() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deleteCampaign(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["campaigns"] }),
+  });
 }

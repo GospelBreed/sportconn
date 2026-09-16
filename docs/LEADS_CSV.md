@@ -1,55 +1,59 @@
 # Leads CSV — import & export format
 
-Roseway CRM imports and exports **Leads** as CSV from the **Leads** page
+SportConn CRM imports and exports **Leads** as CSV from the **Leads** page
 (`/leads`): **Import CSV** / **Export CSV** in the top-right, plus **Download
-template** inside the import dialog.
+template** inside the import dialog. This covers the Sponsor, Investor,
+Strategic Partnership, and User Acquisition pipelines — Facilities and
+Captains have their own directory pages, not a CSV import yet.
 
 - Encoding: UTF-8. Delimiter: comma. First row = headers.
 - Quote any value that contains a comma, quote, or newline; escape a literal
   quote by doubling it (`""`). This is standard RFC-4180 CSV — what Excel,
   Google Sheets, and Numbers produce by default.
 - Header names are matched **case-insensitively and ignore spaces / underscores /
-  dashes**, and common aliases are auto-detected (e.g. `Company`, `Company Name`,
-  `Management Company` → `company_name`; `ARR`, `Annual Value` → `estimated_arr`).
+  dashes**, and common aliases are auto-detected (e.g. `Company`, `Organization`
+  → `company_name`; `Value`, `Deal Value` → `expected_value`).
   You confirm every mapping on the "Map columns" step before importing.
 - Import **only adds** rows. It never updates or de-duplicates existing leads.
 - Rows missing `full_name` are skipped and listed back to you; unrecognised
   enum values fall back to the default and are reported as warnings.
+- A row's `pipeline` determines which pipeline it lands in; if the pipeline's
+  stage isn't specified, it defaults to that pipeline's first configured stage
+  (Settings → Pipelines & stages).
 
 ## Columns
 
 | Column | Required | Notes |
 |---|---|---|
 | `full_name` | **yes** | Contact person's full name. |
-| `title` | no | Job title, e.g. `Community Manager`. |
+| `title` | no | Job title, e.g. `Facility Manager`. |
 | `email` | no | Contact email. |
 | `phone` | no | Any format. |
+| `whatsapp` | no | Any format. Blank allowed. |
 | `linkedin_url` | no | Full URL. |
-| `company_name` | no | Management company, e.g. `Greystar Real Estate`. |
-| `property_name` | no | Community name (free text). |
+| `company_name` | no | Organization / brand name. |
+| `lead_type` | no | `sponsor` \| `investor` \| `facility` \| `sports_brand` \| `coach` \| `academy` \| `captain` \| `athlete` \| `community` \| `tournament_organizer` \| `strategic_partner` \| `media_partner` \| `corporate_partner` \| `other`. Default `other`. |
+| `pipeline` | no | `sponsor` \| `investor` \| `strategic_partnership` \| `user_acquisition`. Default `sponsor`. |
 | `location_city` | no | City. |
-| `location_state` | no | 2-letter state code. |
-| `unit_count` | no | Whole number ≥ 0. Non-digits are stripped. |
-| `asset_type` | no | `conventional` \| `luxury` \| `senior` \| `affordable` \| `mixed_use`. Labels like `Senior Living` also accepted. Default `conventional`. |
-| `temperature` | no | `hot` \| `warm` \| `cold`. Default `warm`. |
-| `experience_score` | no | Integer `0`–`100`. Blank allowed. |
-| `stage` | no | `new_lead` \| `contacted` \| `qualified` \| `discovery` \| `proposal` \| `pilot` \| `closed_won` \| `closed_lost`. Labels like `Discovery Call` also accepted. Default `new_lead`. |
-| `source` | no | `res_exp_check` \| `cold_email` \| `linkedin` \| `referral` \| `website` \| `import` \| `other`. Default `import`. |
-| `estimated_arr` | no | Annual USD value. `$` and thousands separators are stripped. Default `0`. |
+| `location_country` | no | Country. |
+| `temperature` | no | `hot` \| `warm` \| `cold` \| `at_risk`. Default `warm`. |
+| `priority` | no | `high` \| `medium` \| `low`. Default `medium`. |
+| `source` | no | `field_sales` \| `referral` \| `website` \| `social_media` \| `linkedin` \| `instagram` \| `facebook` \| `whatsapp` \| `email` \| `event` \| `campaign` \| `existing_network` \| `investor_outreach` \| `sponsor_outreach` \| `facility_outreach` \| `organic` \| `other`. Default `import`. |
+| `expected_value` | no | Numeric. `$` and thousands separators are stripped. Blank allowed. |
 | `next_follow_up_at` | no | `YYYY-MM-DD`, `MM/DD/YYYY`, or full ISO 8601. Blank allowed. |
 | `notes` | no | Free text. |
 
 ## Export-only columns
 
-Exports add three read-only trailing columns for reference — **ignored on
+Exports add five read-only trailing columns for reference — **ignored on
 import**, so an exported file re-imports cleanly (creating new copies):
 
-`id`, `created_at`, `last_activity_at`
+`id`, `stage`, `status`, `created_at`, `last_activity_at`
 
 ## Example
 
 ```csv
-full_name,title,email,phone,linkedin_url,company_name,property_name,location_city,location_state,unit_count,asset_type,temperature,experience_score,stage,source,estimated_arr,next_follow_up_at,notes
-Sarah Johnson,Community Manager,s.johnson@greystar.com,(972) 555-0184,https://linkedin.com/in/sjohnson,Greystar Real Estate,The Park at Legacy,Plano,TX,420,conventional,hot,68,qualified,cold_email,18000,2025-10-15,"Downloaded checklist; wants to loop in Regional VP."
-Marcus Rivera,General Manager,m.rivera@cortland.com,(214) 555-0110,,Cortland Communities,Cortland Grand Reserve,Dallas,TX,380,luxury,hot,52,discovery,cold_email,24000,,Rescue package proposal under review.
+full_name,title,email,phone,whatsapp,linkedin_url,company_name,lead_type,pipeline,location_city,location_country,temperature,priority,source,expected_value,next_follow_up_at,notes
+Adaeze Nwankwo,Marketing Director,adaeze@titantelecom.ng,+234 803 555 0301,+234 803 555 0301,,Titan Telecom,sponsor,sponsor,Lagos,Nigeria,hot,high,sponsor_outreach,10000000,2026-10-15,"Very interested in grassroots football sponsorship."
+Chidi Okafor,Partner,chidi@capitalventures.ng,+234 803 555 0306,,,Capital Ventures,investor,investor,Lagos,Nigeria,hot,high,investor_outreach,75000,,Pitch deck sent; strong initial interest.
 ```

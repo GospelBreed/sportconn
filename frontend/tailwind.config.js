@@ -9,7 +9,7 @@ export default {
         surface: "#FFFFFF",
         "surface-2": "#FBFBFD",
         line: "#E9E9EF",
-        // brand crimson — channels come from src/lib/branding.ts via --brand
+        // brand color — channels come from src/lib/branding.ts via --brand
         primary: {
           DEFAULT: "rgb(var(--brand) / <alpha-value>)",
           dark: "rgb(var(--brand-dark) / <alpha-value>)",

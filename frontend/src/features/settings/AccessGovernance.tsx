@@ -22,7 +22,18 @@ import {
 import { formatDateTime } from "@/lib/format";
 import type { AppUser, RolePermissions, UserRole } from "@/types";
 
-const ASSIGNABLE_ROLES: UserRole[] = ["super_admin", "admin", "case_manager", "read_only"];
+const ASSIGNABLE_ROLES: UserRole[] = [
+  "super_admin",
+  "admin",
+  "management",
+  "business_development",
+  "sales",
+  "partnerships",
+  "investor_relations",
+  "marketing",
+  "community_manager",
+  "viewer",
+];
 
 export function AccessGovernance() {
   const { isAdmin, isSuperAdmin, canManageUsers, canEditPermissions } = useRole();
@@ -188,14 +199,14 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>("admin");
+  const [role, setRole] = useState<UserRole>("business_development");
 
   useEffect(() => {
     if (open) {
       setEmail("");
       setName("");
       setPassword(randomPassword());
-      setRole("admin");
+      setRole("business_development");
     }
   }, [open]);
 
@@ -224,7 +235,7 @@ function CreateUserModal({ open, onClose }: { open: boolean; onClose: () => void
     <Modal open={open} onClose={onClose} title="Create user">
       <div className="space-y-4">
         <Field label="Email" required>
-          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="new.admin@rosewayresident.com" autoFocus />
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="new.hire@sportconn.com" autoFocus />
         </Field>
         <Field label="Full name">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jordan Lee" />
