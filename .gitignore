@@ -1,0 +1,28 @@
+# ─── Secrets / environment ──────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# ─── Node / frontend ────────────────────────────────────────────────────
+node_modules/
+dist/
+.vite/
+*.local
+*.tsbuildinfo
+
+# ─── Supabase CLI ───────────────────────────────────────────────────────
+supabase/.branches/
+supabase/.temp/
+
+# ─── OS / editor ────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local Netlify folder
+.netlify
