@@ -13,7 +13,7 @@ export const BRAND = {
   shortName: "Sportconn",
   tagline: "Sports Operations",
   primary: "#2563EB",
-  logoUrl: null as string | null,
+  logoUrl: "/sportconn-icon.png" as string | null,
 };
 
 function hexToRgbChannels(hex: string): string {
