@@ -345,9 +345,11 @@ create table if not exists sportconn.campaigns (
 
 create index if not exists idx_campaigns_status on sportconn.campaigns(status);
 
-alter table sportconn.leads
-  add constraint leads_campaign_fk foreign key (campaign_id)
-  references sportconn.campaigns(id) on delete set null;
+do $$ begin
+  alter table sportconn.leads
+    add constraint leads_campaign_fk foreign key (campaign_id)
+    references sportconn.campaigns(id) on delete set null;
+exception when duplicate_object then null; end $$;
 create index if not exists idx_leads_campaign on sportconn.leads(campaign_id);
 
 -- ----------------------------------------------------------------------------
@@ -411,12 +413,16 @@ create index if not exists idx_tasks_lead     on sportconn.tasks(lead_id);
 -- ----------------------------------------------------------------------------
 -- Complete activities / notifications FKs to leads (deferred from 0001)
 -- ----------------------------------------------------------------------------
-alter table sportconn.activities
-  add constraint activities_lead_fk foreign key (lead_id) references sportconn.leads(id) on delete cascade;
+do $$ begin
+  alter table sportconn.activities
+    add constraint activities_lead_fk foreign key (lead_id) references sportconn.leads(id) on delete cascade;
+exception when duplicate_object then null; end $$;
 create index if not exists idx_activities_lead on sportconn.activities(lead_id, created_at desc);
 
-alter table sportconn.notifications
-  add constraint notifications_lead_fk foreign key (lead_id) references sportconn.leads(id) on delete cascade;
+do $$ begin
+  alter table sportconn.notifications
+    add constraint notifications_lead_fk foreign key (lead_id) references sportconn.leads(id) on delete cascade;
+exception when duplicate_object then null; end $$;
 
 -- ----------------------------------------------------------------------------
 -- TRIGGERS
@@ -546,7 +552,8 @@ begin
     update sportconn.captains set last_activity_at = now() where id = new.captain_id;
   end if;
   insert into sportconn.activities (lead_id, facility_id, captain_id, type, description, created_by)
-  values (new.lead_id, new.facility_id, new.captain_id, new.channel,
+  values (new.lead_id, new.facility_id, new.captain_id,
+          case when new.channel in ('call','whatsapp','email','meeting') then new.channel else 'outreach' end,
           initcap(replace(new.channel, '_', ' ')) || ' (' || new.outcome || ')' ||
           coalesce(': ' || new.subject, ''), coalesce(new.created_by, auth.uid()));
   if new.campaign_id is not null then
