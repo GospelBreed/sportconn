@@ -735,7 +735,7 @@ begin
     select count(*) into won_count from facilities where status = 'won';
     select count(*) into lost_count from facilities where status = 'lost';
     select jsonb_build_object(
-      'total_value',   coalesce(sum(expected_value), 0) filter (where status = 'open'),
+      'total_value',   coalesce(sum(expected_value) filter (where status = 'open'), 0),
       'active_count',  count(*) filter (where status = 'open'),
       'avg_value',     coalesce(avg(expected_value) filter (where status = 'open'), 0),
       'won_count',     won_count,
