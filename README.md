@@ -126,6 +126,9 @@ React SPA (Netlify)  ──supabase-js (anon key + user JWT)──▶  Supabase 
       contract/payment, approvals, deliverables, extra contacts, 30-day
       scorecard. **Apply it before deploying a frontend that includes it** —
       the lead panel reads the new tables.
+   5. [`supabase/migrations/0005_lead_email.sql`](./supabase/migrations/0005_lead_email.sql)
+      — email from the CRM: `leads.email_opt_out`, `outreach.recipient` /
+      `external_id`. Then set up the `send-email` function (§ Email below).
 3. *(Optional)* Run [`supabase/seed.sql`](./supabase/seed.sql) for fictional
    demo data (facilities, captains, campaigns, leads across every pipeline,
    outreach, tasks). Re-running is safe for the core rows; it will add
@@ -192,7 +195,9 @@ supabase/
   migrations/0003_admin_governance.sql  role hierarchy, role_permissions, audit_log
   migrations/0004_sponsor_execution.sql  sponsor score, packages, approvals, deliverables, scorecard
   functions/manage-users/        Edge Function — privileged user management
+  migrations/0005_lead_email.sql  email opt-out, outreach recipient / provider id
   functions/mcp-server/          Edge Function — the CRM as a Claude connector
+  functions/send-email/          Edge Function — send lead emails via Resend
   seed.sql                       optional fictional demo data
 frontend/
   src/lib/         supabase client, db helpers, auth, query client, branding, format
@@ -227,6 +232,24 @@ full column list.
 | `sportconn.role_permissions` / `audit_log` | governance matrix + user-management audit trail |
 
 ## 10. Deploy
+
+### Email (Resend) → `send-email` Edge Function
+Staff send one-to-one emails to a lead (or its saved contacts) from the lead
+panel. The function sends through Resend and logs each email as outbound
+outreach on the lead's timeline. Replies go to the sender's own address.
+
+1. In Resend, verify your sending domain and create an API key (sending access).
+2. Set the secrets and deploy:
+   ```bash
+   npx supabase secrets set --project-ref <ref> RESEND_API_KEY=re_xxx \
+     EMAIL_FROM="SportConn Partnerships <partnerships@your-verified-domain>"
+   npx supabase functions deploy send-email --project-ref <ref> --use-api
+   ```
+   Optional: `EMAIL_DAILY_LIMIT` (per user per 24h, default 100).
+
+The function only sends to addresses already saved on the lead or its
+contacts, refuses leads marked **Do not email**, and runs every database call
+with the caller's own session (RLS applies; viewers can't send).
 
 ### Frontend → Netlify
 [`frontend/netlify.toml`](./frontend/netlify.toml) is preconfigured (`base =

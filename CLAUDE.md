@@ -130,6 +130,10 @@ supabase/
   migrations/0004_sponsor_execution.sql  sponsor score, packages, contract/payment,
                              approvals, deliverables, lead_contacts, scorecard RPC,
                              sponsor Won gate (signed + paid + price approval)
+  migrations/0005_lead_email.sql  email opt-out + outreach recipient/provider id
+  functions/send-email/      Edge Function — lead emails via Resend (runs as the
+                             caller; logs outbound outreach)
+  functions/mcp-server/      Edge Function — the CRM as a Claude connector
   functions/manage-users/    Edge Function — privileged user management
   seed.sql                   fictional demo data (optional, idempotent)
 frontend/

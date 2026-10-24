@@ -197,6 +197,17 @@ Mark items `[x]` as completed. Keep this file honest.
       `supabase functions deploy mcp-server --no-verify-jwt`
 - [ ] Manual smoke as a sales rep and as management
 
+## Phase 16 — Email from the CRM (Resend)
+- [x] `0005_lead_email.sql`: `leads.email_opt_out` (+ timeline log), `outreach.recipient`, `outreach.external_id`
+- [x] `send-email` Edge Function: caller-scoped RLS, write check, recipient allow-list (lead + contacts),
+      opt-out refusal, daily cap, Resend send, outbound outreach log
+- [x] Lead panel: Send email → compose window (recipient, SOP templates, placeholder check),
+      Do not email switch, sent emails readable in the Activities tab
+- [x] Migration tested on throwaway Postgres (re-run, opt-out log, new columns); function `deno check` clean; `npm run build` green
+- [ ] Apply 0005, set `RESEND_API_KEY` / `EMAIL_FROM`, deploy `send-email`, then deploy the frontend
+- [ ] Send a real test email to an internal address
+- [ ] Later: Resend webhooks for delivered / opened / bounced and reply capture
+
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)
 - [ ] Granular security / permission matrix (`users.is_active`, Advanced card present)

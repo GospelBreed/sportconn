@@ -586,6 +586,40 @@ export async function updateScorecardTarget(metric: string, body: Partial<Scorec
 }
 
 // ===========================================================================
+// EMAIL (0005) — sent server-side by the `send-email` Edge Function (Resend)
+// ===========================================================================
+export interface SendEmailInput {
+  lead_id: string;
+  to: string;
+  subject: string;
+  body: string;
+  idempotency_key: string;
+}
+
+export async function sendLeadEmail(payload: SendEmailInput): Promise<{ id: string; warning?: string }> {
+  const { data, error } = await supabase.functions.invoke("send-email", { body: payload });
+  if (error) {
+    let msg = error.message || "Could not send the email";
+    const ctx = (error as { context?: unknown }).context as Response | undefined;
+    if (ctx && typeof ctx.json === "function") {
+      try {
+        const b = await ctx.json();
+        if (b?.error) msg = b.error;
+      } catch {
+        /* keep msg */
+      }
+    }
+    if (/failed to (fetch|send)|networkerror/i.test(msg)) {
+      throw new Error("Email sending isn't available. The send-email function may not be deployed yet.");
+    }
+    throw new Error(msg);
+  }
+  const res = data as { data?: { id: string }; warning?: string; error?: string };
+  if (res?.error) throw new Error(res.error);
+  return { id: res?.data?.id ?? "", warning: res?.warning };
+}
+
+// ===========================================================================
 // HEALTH
 // ===========================================================================
 export async function pingDb(): Promise<boolean> {

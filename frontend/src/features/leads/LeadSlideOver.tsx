@@ -11,6 +11,7 @@ import { EmptyState, SkeletonRows } from "@/components/ui/states";
 import { FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
 import { InlineEdit } from "@/components/ui/InlineEdit";
 import { LeadContacts } from "./LeadContacts";
+import { EmailComposeModal } from "./EmailComposeModal";
 import { SponsorDealTab } from "@/features/sponsors/SponsorDealTab";
 import { SponsorDeliveryTab } from "@/features/sponsors/SponsorDeliveryTab";
 import {
@@ -110,6 +111,7 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
   const { data: stages } = usePipelineStages(lead.pipeline as PipelineKey);
   const [lostOpen, setLostOpen] = useState(false);
   const [lostReason, setLostReason] = useState<LostReason>("other");
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const save = (body: Partial<Lead>) =>
     update.mutate(
@@ -170,10 +172,13 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
             <Icon name="phone" size={13} /> Call
           </a>
         )}
-        {lead.email && (
-          <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-xs font-medium text-body hover:bg-line/40">
-            <Icon name="mail" size={13} /> Email
-          </a>
+        {canWrite && (lead.email || lead.contacts.some((c) => c.email)) && (
+          <button
+            onClick={() => setEmailOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-control border border-line px-2.5 py-1.5 text-xs font-medium text-body hover:bg-line/40"
+          >
+            <Icon name="mail" size={13} /> {lead.email_opt_out ? "Email (do not email)" : "Send email"}
+          </button>
         )}
         {(lead.whatsapp || lead.phone) && (
           <a
@@ -248,6 +253,7 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
         tone="danger"
         onConfirm={confirmLost}
       />
+      <EmailComposeModal lead={lead} open={emailOpen} onClose={() => setEmailOpen(false)} />
     </div>
   );
 }
@@ -287,6 +293,19 @@ function Overview({ lead }: { lead: LeadDetail }) {
           <dl className="mt-2 space-y-1.5 text-xs">
             <Row label="Source" value={LEAD_SOURCE_LABEL[lead.source]} />
           </dl>
+          <label className="mt-3 flex items-start gap-2 text-xs text-body">
+            <input
+              type="checkbox"
+              checked={!!lead.email_opt_out}
+              disabled={!canWrite}
+              onChange={(e) => save({ email_opt_out: e.target.checked })}
+              className="mt-0.5 h-4 w-4 accent-primary"
+            />
+            <span>
+              Do not email
+              <span className="block text-muted">Tick if they asked not to be contacted. The CRM will refuse to send.</span>
+            </span>
+          </label>
         </div>
         <div className="card-base p-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
@@ -508,9 +527,17 @@ function OutreachTab({ lead }: { lead: LeadDetail }) {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-body">{o.subject || cm.label}</p>
                   <p className="text-xs text-muted">
+                    {o.recipient ? `To ${o.recipient} · ` : ""}
                     {o.campaigns?.name ? `${o.campaigns.name} · ` : ""}
+                    {o.author?.full_name ? `${o.author.full_name} · ` : ""}
                     {formatRelative(o.occurred_at)}
                   </p>
+                  {o.body && o.external_id && (
+                    <details className="mt-1 text-xs text-body">
+                      <summary className="cursor-pointer text-primary">Show email</summary>
+                      <p className="mt-1 whitespace-pre-wrap rounded-control bg-surface-2 p-2">{o.body}</p>
+                    </details>
+                  )}
                 </div>
                 <Badge className={om.cls}>{om.label}</Badge>
               </div>

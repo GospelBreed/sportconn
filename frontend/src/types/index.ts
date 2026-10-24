@@ -305,6 +305,9 @@ export interface Lead {
   renewal_status?: RenewalStatus | null;
   renewal_due_date?: string | null;
 
+  // email (0005)
+  email_opt_out?: boolean;
+
   investor_type?: string | null;
   ticket_size?: number | null;
   target_raise?: number | null;
@@ -554,6 +557,8 @@ export interface Outreach {
   body?: string | null;
   outcome: OutreachOutcome;
   occurred_at: string;
+  recipient?: string | null;
+  external_id?: string | null;
   created_by?: string | null;
   created_at: string;
   leads?: Pick<Lead, "id" | "full_name" | "company_name"> | null;

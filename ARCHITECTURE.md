@@ -333,6 +333,21 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
 - **`can_approve()`** — `super_admin`, `admin`, `management`. Decides approvals
   and edits packages/targets. Mirrored by `useRole().canApprove`.
 
+### 3.15 Email — migration `0005_lead_email.sql` + `send-email` Edge Function
+
+- `leads.email_opt_out` (logged to the timeline when changed),
+  `outreach.recipient`, `outreach.external_id` (Resend message id).
+- `send-email` verifies the caller's JWT and runs **all DB access as the
+  caller** (anon key + caller JWT), so RLS is the boundary: `can_write()` is
+  checked before sending, the lead must be readable, and the outreach log row
+  is inserted with `created_by = caller`. Guards: recipient must be an address
+  on the lead or its `lead_contacts`; opt-out refused; per-user daily cap
+  (`EMAIL_DAILY_LIMIT`). Secrets: `RESEND_API_KEY`, `EMAIL_FROM`. Reply-To is
+  the sender's login email. Templates (SOP §6) live in
+  `frontend/src/features/leads/emailTemplates.ts`; unfilled `[placeholders]`
+  block sending.
+- Not built: reply capture / open & bounce tracking (Resend webhooks), bulk sends.
+
 ## 4. Row Level Security
 
 RLS is **enabled on every table**. Single-organization model: any authenticated
