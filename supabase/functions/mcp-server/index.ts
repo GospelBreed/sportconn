@@ -59,6 +59,21 @@ async function getConnectorUserId(): Promise<string> {
   return connectorUserId;
 }
 
+// Fields update_lead may change. Stage moves go through update_lead_stage;
+// generated / bookkeeping columns (prospect_score, weighted_value, status,
+// won_at, paid_at, …) are maintained by the database.
+const LEAD_UPDATE_FIELDS = [
+  "full_name", "title", "email", "phone", "whatsapp", "linkedin_url", "website", "company_name",
+  "location_city", "location_state", "location_country", "industry", "sport_category", "interest",
+  "priority", "temperature", "expected_value", "currency", "probability", "notes",
+  "next_action", "next_follow_up_at", "next_follow_up_type",
+  "sponsorship_category", "decision_maker", "budget_status", "proposal_status",
+  "score_sports_fans", "score_audience_fit", "score_budget", "score_decision_maker", "score_opportunity",
+  "fit_reason", "package_id", "expected_decision_date", "contract_status", "contract_value",
+  "invoice_number", "payment_status", "payment_due_date", "amount_received", "vendor_registration",
+  "renewal_status", "renewal_due_date", "campaign_start_date", "campaign_end_date",
+];
+
 // ---------------------------------------------------------------------------
 // Tool definitions (JSON Schema per MCP spec)
 // ---------------------------------------------------------------------------
@@ -195,6 +210,116 @@ const TOOLS = [
     },
   },
   {
+    name: "list_stages",
+    description: "List the configured stages (key, label, order, won/lost flags) for a pipeline.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        pipeline: { type: "string", enum: ["sponsor", "investor", "strategic_partnership", "user_acquisition", "facility", "captain"] },
+      },
+      required: ["pipeline"],
+    },
+  },
+  {
+    name: "update_lead",
+    description:
+      "Update fields on a lead (not its stage — use update_lead_stage). Sponsor deals: scores are 0–2 each; a deal can't be marked Won until contract_status='signed', payment_status='paid' and any price below the package list price has an approved pricing exception/discount.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        fields: {
+          type: "object",
+          description: `Any of: ${LEAD_UPDATE_FIELDS.join(", ")}. Dates as YYYY-MM-DD; next_follow_up_at as ISO datetime.`,
+        },
+      },
+      required: ["id", "fields"],
+    },
+  },
+  {
+    name: "add_lead_contact",
+    description: "Add another person at the lead's organisation (SOP: two relevant contacts per company).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        full_name: { type: "string" },
+        title: { type: "string" },
+        email: { type: "string" },
+        phone: { type: "string" },
+        linkedin_url: { type: "string" },
+        relevance: { type: "string", description: "Why this person matters for the deal." },
+      },
+      required: ["lead_id", "full_name"],
+    },
+  },
+  {
+    name: "list_sponsor_packages",
+    description: "List the sponsorship packages with list price, delivery cost and minimum margin.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "request_approval",
+    description:
+      "Raise an approval request on a deal (pricing exception, discount, exclusivity, contract terms, unusual deliverable). Only management/admin users can decide it, in the app.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        approval_type: {
+          type: "string",
+          enum: ["pricing_exception", "discount", "exclusivity", "contract_terms", "unusual_deliverable", "other"],
+        },
+        summary: { type: "string" },
+      },
+      required: ["lead_id", "approval_type", "summary"],
+    },
+  },
+  {
+    name: "list_pending_approvals",
+    description: "List approval requests waiting for a decision.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "add_deliverable",
+    description: "Add a promised sponsor deliverable (placement, post, activity) to a deal.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        title: { type: "string" },
+        due_date: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["lead_id", "title"],
+    },
+  },
+  {
+    name: "update_deliverable",
+    description: "Change a deliverable's status. Marking it 'delivered' requires proof (a link or short description).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" },
+        status: { type: "string", enum: ["planned", "in_progress", "delivered", "cancelled"] },
+        proof: { type: "string" },
+        due_date: { type: "string", description: "YYYY-MM-DD" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "get_sponsor_scorecard",
+    description:
+      "Live sponsorship scorecard vs. targets for a window (default: last 30 days): companies, contacts, first contacts, replies, meetings, proposals, paid deals.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "YYYY-MM-DD" },
+        to: { type: "string", description: "YYYY-MM-DD" },
+      },
+    },
+  },
+  {
     name: "get_dashboard_summary",
     description: "Get the live cross-pipeline dashboard summary: total leads, pipeline values, follow-ups due, tasks due, temperature breakdown.",
     inputSchema: { type: "object", properties: {} },
@@ -236,9 +361,111 @@ async function callTool(name: string, args: Record<string, unknown>) {
     }
 
     case "get_lead": {
-      const { data, error } = await db.from("leads").select("*").eq("id", args.id as string).maybeSingle();
+      const { data, error } = await db
+        .from("leads")
+        .select("*, contacts:lead_contacts(*), approvals:deal_approvals(*), deliverables:sponsor_deliverables(*)")
+        .eq("id", args.id as string)
+        .maybeSingle();
       if (error) throw error;
       if (!data) throw new Error(`No lead found with id ${args.id}`);
+      return data;
+    }
+
+    case "list_stages": {
+      const { data, error } = await db
+        .from("pipeline_stages")
+        .select("key,label,sort_order,is_won,is_lost")
+        .eq("pipeline_key", args.pipeline as string)
+        .order("sort_order");
+      if (error) throw error;
+      return data;
+    }
+
+    case "update_lead": {
+      const fields = (args.fields ?? {}) as Record<string, unknown>;
+      const unknown = Object.keys(fields).filter((k) => !LEAD_UPDATE_FIELDS.includes(k));
+      if (unknown.length) throw new Error(`These fields can't be updated here: ${unknown.join(", ")}`);
+      if (Object.keys(fields).length === 0) throw new Error("No fields to update");
+      const { data, error } = await db.from("leads").update(fields).eq("id", args.id as string).select().single();
+      if (error) throw error;
+      return data;
+    }
+
+    case "add_lead_contact": {
+      const connector = await getConnectorUserId();
+      const { data, error } = await db
+        .from("lead_contacts")
+        .insert({
+          lead_id: args.lead_id,
+          full_name: args.full_name,
+          title: args.title ?? null,
+          email: args.email ?? null,
+          phone: args.phone ?? null,
+          linkedin_url: args.linkedin_url ?? null,
+          relevance: args.relevance ?? null,
+          created_by: connector,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    case "list_sponsor_packages": {
+      const { data, error } = await db.from("sponsor_packages").select("*").order("sort_order");
+      if (error) throw error;
+      return data;
+    }
+
+    case "request_approval": {
+      const connector = await getConnectorUserId();
+      const { data, error } = await db
+        .from("deal_approvals")
+        .insert({
+          lead_id: args.lead_id,
+          approval_type: args.approval_type,
+          summary: args.summary,
+          requested_by: connector,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    case "list_pending_approvals": {
+      const { data, error } = await db
+        .from("deal_approvals")
+        .select("*, leads:lead_id(id,full_name,company_name)")
+        .eq("status", "pending")
+        .order("requested_at");
+      if (error) throw error;
+      return data;
+    }
+
+    case "add_deliverable": {
+      const connector = await getConnectorUserId();
+      const { data, error } = await db
+        .from("sponsor_deliverables")
+        .insert({ lead_id: args.lead_id, title: args.title, due_date: args.due_date ?? null, created_by: connector })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    }
+
+    case "update_deliverable": {
+      const update: Record<string, unknown> = {};
+      for (const k of ["status", "proof", "due_date"]) if (args[k] !== undefined) update[k] = args[k];
+      if (Object.keys(update).length === 0) throw new Error("Nothing to update");
+      const { data, error } = await db.from("sponsor_deliverables").update(update).eq("id", args.id as string).select().single();
+      if (error) throw error;
+      return data;
+    }
+
+    case "get_sponsor_scorecard": {
+      const { data, error } = await db.rpc("get_sponsor_scorecard", { p_from: args.from ?? null, p_to: args.to ?? null });
+      if (error) throw error;
       return data;
     }
 

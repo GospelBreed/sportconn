@@ -194,6 +194,8 @@ export function useRole() {
     isSuperAdmin: role === "super_admin",
     isAdmin: role === "admin" || role === "super_admin",
     isReadOnly: role === "viewer",
+    // mirrors sportconn.can_approve() (0004): who may decide deal approvals
+    canApprove: role === "super_admin" || role === "admin" || role === "management",
     canWrite: eff.can_write,
     canDelete: eff.can_delete,
     canExport: eff.can_export,

@@ -10,7 +10,9 @@ type Table =
   | "notifications"
   | "tasks"
   | "outreach"
-  | "campaigns";
+  | "campaigns"
+  | "deal_approvals"
+  | "sponsor_deliverables";
 
 /**
  * Subscribe to Postgres changes on a `sportconn` table and invalidate the

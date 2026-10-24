@@ -8,9 +8,11 @@ import type {
   Captain,
   CaptainDetail,
   DashboardSummary,
+  DealApproval,
   Facility,
   FacilityDetail,
   Lead,
+  LeadContact,
   LeadDetail,
   Outreach,
   PipelineDef,
@@ -18,6 +20,10 @@ import type {
   PipelineMetrics,
   PipelineStageDef,
   RolePermissions,
+  ScorecardTarget,
+  SponsorDeliverable,
+  SponsorPackage,
+  SponsorScorecard,
   Task,
   UserRole,
 } from "@/types";
@@ -43,6 +49,9 @@ const OUTREACH_SELECT =
   "*, leads:lead_id(id,full_name,company_name), facilities:facility_id(id,name), captains:captain_id(id,full_name), campaigns:campaign_id(id,name), author:created_by(id,full_name)";
 const ACTIVITY_SELECT =
   "*, author:created_by(id,full_name), leads:lead_id(id,full_name,company_name), facilities:facility_id(id,name), captains:captain_id(id,full_name)";
+const APPROVAL_SELECT =
+  "*, requester:requested_by(id,full_name), decider:decided_by(id,full_name), leads:lead_id(id,full_name,company_name)";
+const DELIVERABLE_SELECT = "*, owner_user:owner(id,full_name)";
 
 // ===========================================================================
 // PIPELINES / STAGES (configurable — Settings)
@@ -114,7 +123,7 @@ export function getLead(id: string): Promise<Lead> {
 }
 
 export async function getLeadDetail(id: string): Promise<LeadDetail> {
-  const [lead, outreach, tasks, activities] = await Promise.all([
+  const [lead, outreach, tasks, activities, contacts, approvals, deliverables] = await Promise.all([
     getLead(id),
     run<Outreach[]>(
       supabase.from("outreach").select(OUTREACH_SELECT).eq("lead_id", id).order("occurred_at", { ascending: false }),
@@ -130,8 +139,25 @@ export async function getLeadDetail(id: string): Promise<LeadDetail> {
         .order("created_at", { ascending: false })
         .limit(100),
     ),
+    run<LeadContact[]>(
+      supabase.from("lead_contacts").select("*").eq("lead_id", id).order("created_at"),
+    ),
+    run<DealApproval[]>(
+      supabase.from("deal_approvals").select(APPROVAL_SELECT).eq("lead_id", id).order("requested_at", { ascending: false }),
+    ),
+    run<SponsorDeliverable[]>(
+      supabase.from("sponsor_deliverables").select(DELIVERABLE_SELECT).eq("lead_id", id).order("due_date", { ascending: true, nullsFirst: false }),
+    ),
   ]);
-  return { ...lead, outreach: outreach ?? [], tasks: tasks ?? [], activities: activities ?? [] };
+  return {
+    ...lead,
+    outreach: outreach ?? [],
+    tasks: tasks ?? [],
+    activities: activities ?? [],
+    contacts: contacts ?? [],
+    approvals: approvals ?? [],
+    deliverables: deliverables ?? [],
+  };
 }
 
 export function createLead(body: Partial<Lead>): Promise<Lead> {
@@ -475,6 +501,88 @@ export async function getPipelineMetrics(pipeline?: string): Promise<PipelineMet
   const { data, error } = await supabase.rpc("get_pipeline_metrics", { p_pipeline: pipeline ?? null });
   if (error) throw new Error(error.message);
   return data as PipelineMetrics;
+}
+
+// ===========================================================================
+// SPONSOR EXECUTION (0004) — packages, contacts, approvals, deliverables, scorecard
+// ===========================================================================
+export function listSponsorPackages(): Promise<SponsorPackage[]> {
+  return run<SponsorPackage[]>(
+    supabase.from("sponsor_packages").select("*").order("sort_order"),
+  ).then((r) => r ?? []);
+}
+
+export function updateSponsorPackage(id: string, body: Partial<SponsorPackage>): Promise<SponsorPackage> {
+  return run<SponsorPackage[]>(
+    supabase.from("sponsor_packages").update(body).eq("id", id).select("*"),
+  ).then((r) => {
+    if (!r?.[0]) throw new Error("Only management or admins can change packages.");
+    return r[0];
+  });
+}
+
+export function createLeadContact(body: Partial<LeadContact>): Promise<LeadContact> {
+  return run<LeadContact[]>(supabase.from("lead_contacts").insert(body).select("*")).then((r) => r[0]);
+}
+
+export async function deleteLeadContact(id: string): Promise<{ id: string }> {
+  const { error } = await supabase.from("lead_contacts").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return { id };
+}
+
+export function listPendingApprovals(): Promise<DealApproval[]> {
+  return run<DealApproval[]>(
+    supabase.from("deal_approvals").select(APPROVAL_SELECT).eq("status", "pending").order("requested_at"),
+  ).then((r) => r ?? []);
+}
+
+export function createDealApproval(body: Partial<DealApproval>): Promise<DealApproval> {
+  return run<DealApproval[]>(supabase.from("deal_approvals").insert(body).select(APPROVAL_SELECT)).then((r) => r[0]);
+}
+
+export function decideDealApproval(
+  id: string,
+  status: "approved" | "rejected",
+  decision_note: string | null,
+): Promise<DealApproval> {
+  return run<DealApproval[]>(
+    supabase.from("deal_approvals").update({ status, decision_note }).eq("id", id).select(APPROVAL_SELECT),
+  ).then((r) => {
+    // RLS turns an unauthorised update into "0 rows", not an error.
+    if (!r?.[0]) throw new Error("Only management or admins can decide approvals.");
+    return r[0];
+  });
+}
+
+export function createDeliverable(body: Partial<SponsorDeliverable>): Promise<SponsorDeliverable> {
+  return run<SponsorDeliverable[]>(
+    supabase.from("sponsor_deliverables").insert(body).select(DELIVERABLE_SELECT),
+  ).then((r) => r[0]);
+}
+
+export function updateDeliverable(id: string, body: Partial<SponsorDeliverable>): Promise<SponsorDeliverable> {
+  return run<SponsorDeliverable[]>(
+    supabase.from("sponsor_deliverables").update(body).eq("id", id).select(DELIVERABLE_SELECT),
+  ).then((r) => r[0]);
+}
+
+export async function deleteDeliverable(id: string): Promise<{ id: string }> {
+  const { error } = await supabase.from("sponsor_deliverables").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  return { id };
+}
+
+export async function getSponsorScorecard(from?: string, to?: string): Promise<SponsorScorecard> {
+  const { data, error } = await supabase.rpc("get_sponsor_scorecard", { p_from: from ?? null, p_to: to ?? null });
+  if (error) throw new Error(error.message);
+  return data as SponsorScorecard;
+}
+
+export async function updateScorecardTarget(metric: string, body: Partial<ScorecardTarget>): Promise<void> {
+  const { data, error } = await supabase.from("scorecard_targets").update(body).eq("metric", metric).select("metric");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Only management or admins can change targets.");
 }
 
 // ===========================================================================

@@ -301,6 +301,38 @@ Every action appends to `audit_log`. The frontend calls it via
 `db.manageUsers()`; a missing deployment surfaces a "not deployed" message
 rather than a raw error.
 
+### 3.14 Sponsor execution — migration `0004_sponsor_execution.sql`
+
+Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
+(score → qualify → propose → contract → get paid → deliver → renew).
+
+- **`leads` sponsor columns** — five 0–2 qualification scores and a generated
+  `prospect_score` (null until scored; UI tiers it A ≥8 / B 5–7 / C ≤4),
+  `fit_reason`, `package_id`, `expected_decision_date`, `contract_status`,
+  `contract_value`, `invoice_number`, `payment_status`, `payment_due_date`,
+  `amount_received`, `paid_at` (stamped by trigger), `vendor_registration`,
+  `renewal_status`, `renewal_due_date`.
+- **`sponsor_packages`** — offer menu: `list_price`, `delivery_cost`,
+  `min_margin_pct`, `is_active`. Seeded with the five SOP packages; delivery
+  cost deliberately empty until someone works it out.
+- **`lead_contacts`** — extra people per lead/company.
+- **`deal_approvals`** — written decision log (`pricing_exception`, `discount`,
+  `exclusivity`, `contract_terms`, `unusual_deliverable`, `other`). Inserts are
+  forced to `pending`; a decided row can't be re-decided; `decided_by/at` are
+  stamped by trigger. Requests and decisions write `system` activities.
+- **`sponsor_deliverables`** — promised benefits with owner, due date, status
+  and `proof`. `delivered` requires proof (trigger); `delivered_at` stamped.
+- **`scorecard_targets`** + **`get_sponsor_scorecard(p_from, p_to)`** — live
+  30-day scorecard (companies, contacts, first contacts, replies, meetings,
+  proposals, paid, values) with the targets attached. Meetings/proposals are
+  counted from logged outreach (`meeting`/`sponsor_meeting`, `proposal`).
+- **Won gate** (`leads_sponsor_gate` trigger): a sponsor lead can only enter a
+  `is_won` stage when `contract_status = 'signed'`, `payment_status = 'paid'`,
+  and — if the deal value is below the package list price — an approved
+  `pricing_exception`/`discount` exists. Other pipelines are unaffected.
+- **`can_approve()`** — `super_admin`, `admin`, `management`. Decides approvals
+  and edits packages/targets. Mirrored by `useRole().canApprove`.
+
 ## 4. Row Level Security
 
 RLS is **enabled on every table**. Single-organization model: any authenticated
@@ -331,6 +363,9 @@ immediately (0003).
 | `leads` · `campaigns` · `outreach` · `tasks` · `experience_assessments` | authenticated: all | `can_write()` | `can_delete()` (0003) |
 | `role_permissions` | authenticated: all | `is_super_admin()` (+ guard trigger keeps super_admin's row omnipotent) | `is_super_admin()` |
 | `audit_log` | `is_admin()` | — (Edge Function writes via service role) | — |
+| `lead_contacts` · `sponsor_deliverables` | authenticated: all | `can_write()` | `can_delete()` (0004) |
+| `deal_approvals` | authenticated: all | INSERT `can_write()`; UPDATE (decide) `can_approve()` | — (kept as the decision log) |
+| `sponsor_packages` · `scorecard_targets` | authenticated: all | `can_approve()` | `can_approve()` |
 
 DELETE on `properties` / `residents` / `cases` was re-pointed to `can_delete()` by
 0003 (previously `is_admin()` / `can_write()`).

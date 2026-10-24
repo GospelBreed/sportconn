@@ -60,7 +60,10 @@ and all UI primitives.
     database enforces again via `CHECK` constraints, `NOT NULL`, and RLS
     `WITH CHECK`. Marking a stage Lost **requires** a `lost_reason` — enforced
     in the `leads_before_write()` / `facilities_before_write()` triggers, not
-    just the UI.
+    just the UI. Likewise a **sponsor** lead can only be marked Won once the
+    contract is signed, payment is confirmed, and any below-list price has an
+    approved exception (`leads_sponsor_gate()`, 0004); approvals are decided only
+    by `can_approve()` roles (super_admin / admin / management).
 11. **Confirm destructive actions** with a red-button `<ConfirmDialog>`.
 12. **Toasts, never `alert()`/`console.error`** for user-facing messages.
 13. **No fabricated business data.** Dashboard/report metrics are always
@@ -124,6 +127,9 @@ supabase/
   migrations/0002_dealflow.sql  pipelines/stages, leads, campaigns, outreach,
                              tasks, get_dashboard_summary(), get_pipeline_metrics()
   migrations/0003_admin_governance.sql  role hierarchy, role_permissions, audit_log
+  migrations/0004_sponsor_execution.sql  sponsor score, packages, contract/payment,
+                             approvals, deliverables, lead_contacts, scorecard RPC,
+                             sponsor Won gate (signed + paid + price approval)
   functions/manage-users/    Edge Function — privileged user management
   seed.sql                   fictional demo data (optional, idempotent)
 frontend/

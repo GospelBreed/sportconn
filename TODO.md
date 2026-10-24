@@ -173,6 +173,30 @@ Mark items `[x]` as completed. Keep this file honest.
 > then `supabase functions deploy manage-users`. Bootstrap the first super_admin
 > via the dashboard (README §3).
 
+## Phase 15 — Sponsor execution (Sponsorship Acquisition SOP)
+- [x] `0004_sponsor_execution.sql`: sponsor columns on leads (5 scores + generated
+      `prospect_score`, fit reason, package, decision date, contract/invoice/payment,
+      vendor registration, renewal), `sponsor_packages`, `lead_contacts`,
+      `deal_approvals`, `sponsor_deliverables`, `scorecard_targets`,
+      `get_sponsor_scorecard()`, `can_approve()`, sponsor Won gate, RLS, realtime
+- [x] Migration tested on a throwaway Postgres (0001→0004 + re-run; won gate,
+      approvals RLS, proof rule, scorecard counts)
+- [x] Lead panel: editable contact details, Next action, Other contacts; sponsor
+      **Deal** tab (score, package + margin, contract & payment, Won readiness,
+      approvals, renewal) and **Delivery** tab (campaign dates, deliverables + proof)
+- [x] Sponsors page: 30-day scorecard vs targets + bottleneck, Needs attention,
+      Approvals queue; Score column
+- [x] Settings → Sponsor packages (price, delivery cost, margin floor, on sale) +
+      scorecard targets
+- [x] mcp-server: `list_stages`, `update_lead`, `add_lead_contact`,
+      `list_sponsor_packages`, `request_approval`, `list_pending_approvals`,
+      `add_deliverable`, `update_deliverable`, `get_sponsor_scorecard`; `get_lead`
+      includes contacts/approvals/deliverables
+- [x] `npm run build` green
+- [ ] Apply 0004 to the production database, then deploy the frontend and
+      `supabase functions deploy mcp-server --no-verify-jwt`
+- [ ] Manual smoke as a sales rep and as management
+
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)
 - [ ] Granular security / permission matrix (`users.is_active`, Advanced card present)

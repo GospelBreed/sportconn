@@ -8,12 +8,17 @@ import { followupBucket, type FollowupBucket } from "@/lib/format";
 import type {
   Campaign,
   Captain,
+  DealApproval,
   Facility,
   Lead,
+  LeadContact,
   Outreach,
   PipelineKey,
   PipelineStageDef,
   RolePermissions,
+  ScorecardTarget,
+  SponsorDeliverable,
+  SponsorPackage,
   Task,
   UserRole,
 } from "@/types";
@@ -92,6 +97,7 @@ export function useUpdateLead() {
       qc.invalidateQueries({ queryKey: ["lead", v.id] });
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
       qc.invalidateQueries({ queryKey: ["pipeline-metrics"] });
+      qc.invalidateQueries({ queryKey: ["sponsor-scorecard"] });
     },
   });
 }
@@ -349,6 +355,103 @@ export function useCreateOutreach() {
       if (created?.facility_id) qc.invalidateQueries({ queryKey: ["facility", created.facility_id] });
       if (created?.captain_id) qc.invalidateQueries({ queryKey: ["captain", created.captain_id] });
     },
+  });
+}
+
+// ======================= SPONSOR EXECUTION =======================
+export function useSponsorPackages() {
+  return useQuery({ queryKey: ["sponsor-packages"], queryFn: db.listSponsorPackages, staleTime: 5 * 60_000 });
+}
+
+export function useUpdateSponsorPackage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<SponsorPackage> }) => db.updateSponsorPackage(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sponsor-packages"] }),
+  });
+}
+
+export function useSponsorScorecard(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ["sponsor-scorecard", from ?? null, to ?? null],
+    queryFn: () => db.getSponsorScorecard(from, to),
+  });
+}
+
+export function useUpdateScorecardTarget() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ metric, body }: { metric: string; body: Partial<ScorecardTarget> }) =>
+      db.updateScorecardTarget(metric, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sponsor-scorecard"] }),
+  });
+}
+
+export function usePendingApprovals() {
+  return useQuery({ queryKey: ["approvals", "pending"], queryFn: db.listPendingApprovals });
+}
+
+/** Invalidate everything a sponsor-execution write can change on a lead. */
+function invalidateLeadExecution(qc: ReturnType<typeof useQueryClient>, leadId?: string | null) {
+  if (leadId) qc.invalidateQueries({ queryKey: ["lead", leadId] });
+  qc.invalidateQueries({ queryKey: ["approvals"] });
+  qc.invalidateQueries({ queryKey: ["sponsor-scorecard"] });
+}
+
+export function useCreateLeadContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<LeadContact>) => db.createLeadContact(body),
+    onSuccess: (c) => invalidateLeadExecution(qc, c?.lead_id),
+  });
+}
+
+export function useDeleteLeadContact(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deleteLeadContact(id),
+    onSuccess: () => invalidateLeadExecution(qc, leadId),
+  });
+}
+
+export function useCreateDealApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<DealApproval>) => db.createDealApproval(body),
+    onSuccess: (a) => invalidateLeadExecution(qc, a?.lead_id),
+  });
+}
+
+export function useDecideDealApproval() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, status, note }: { id: string; status: "approved" | "rejected"; note: string | null }) =>
+      db.decideDealApproval(id, status, note),
+    onSuccess: (a) => invalidateLeadExecution(qc, a?.lead_id),
+  });
+}
+
+export function useCreateDeliverable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<SponsorDeliverable>) => db.createDeliverable(body),
+    onSuccess: (d) => invalidateLeadExecution(qc, d?.lead_id),
+  });
+}
+
+export function useUpdateDeliverable() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<SponsorDeliverable> }) => db.updateDeliverable(id, body),
+    onSuccess: (d) => invalidateLeadExecution(qc, d?.lead_id),
+  });
+}
+
+export function useDeleteDeliverable(leadId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.deleteDeliverable(id),
+    onSuccess: () => invalidateLeadExecution(qc, leadId),
   });
 }
 

@@ -9,7 +9,12 @@ import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui/p
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState, SkeletonRows } from "@/components/ui/states";
 import { FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
+import { InlineEdit } from "@/components/ui/InlineEdit";
+import { LeadContacts } from "./LeadContacts";
+import { SponsorDealTab } from "@/features/sponsors/SponsorDealTab";
+import { SponsorDeliveryTab } from "@/features/sponsors/SponsorDeliveryTab";
 import {
+  prospectTier,
   ACTIVITY_META,
   CHANNEL_META,
   FOLLOWUP_TYPE_LABEL,
@@ -35,7 +40,7 @@ import type {
   Temperature,
 } from "@/types";
 
-type Tab = "overview" | "timeline" | "outreach" | "tasks";
+type Tab = "overview" | "deal" | "delivery" | "timeline" | "outreach" | "tasks";
 
 export function LeadSlideOver({
   leadId,
@@ -68,6 +73,16 @@ export function LeadSlideOver({
               onChange={setTab}
               tabs={[
                 { key: "overview", label: "Overview" },
+                ...(lead.pipeline === "sponsor"
+                  ? [
+                      { key: "deal" as const, label: "Deal" },
+                      {
+                        key: "delivery" as const,
+                        label: "Delivery",
+                        count: lead.deliverables.filter((d) => d.status !== "delivered" && d.status !== "cancelled").length,
+                      },
+                    ]
+                  : []),
                 { key: "timeline", label: "Timeline" },
                 { key: "outreach", label: "Activities", count: lead.outreach.length },
                 { key: "tasks", label: "Tasks", count: lead.tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled").length },
@@ -76,6 +91,8 @@ export function LeadSlideOver({
           </div>
           <div className="flex-1 overflow-y-auto p-5">
             {tab === "overview" && <Overview lead={lead} />}
+            {tab === "deal" && <SponsorDealTab lead={lead} />}
+            {tab === "delivery" && <SponsorDeliveryTab lead={lead} />}
             {tab === "timeline" && <Timeline lead={lead} />}
             {tab === "outreach" && <OutreachTab lead={lead} />}
             {tab === "tasks" && <TasksTab lead={lead} />}
@@ -103,17 +120,31 @@ function Header({ lead, onClose }: { lead: LeadDetail; onClose: () => void }) {
   const wonStage = stages?.find((s) => s.is_won)?.key;
   const lostStage = stages?.find((s) => s.is_lost)?.key;
 
+  // Sponsor deals can be refused by the database (contract / payment / approval
+  // gate), so only confirm once the write actually succeeds.
   const markWon = () => {
     if (!wonStage) return;
-    save({ stage: wonStage });
-    toast.success("Marked Won");
+    update.mutate(
+      { id: lead.id, body: { stage: wonStage } },
+      {
+        onSuccess: () => toast.success("Marked Won"),
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Update failed"),
+      },
+    );
   };
 
   const confirmLost = () => {
     if (!lostStage) return;
-    save({ stage: lostStage, lost_reason: lostReason });
-    setLostOpen(false);
-    toast.success("Marked Lost");
+    update.mutate(
+      { id: lead.id, body: { stage: lostStage, lost_reason: lostReason } },
+      {
+        onSuccess: () => {
+          setLostOpen(false);
+          toast.success("Marked Lost");
+        },
+        onError: (e) => toast.error(e instanceof Error ? e.message : "Update failed"),
+      },
+    );
   };
 
   return (
@@ -245,11 +276,15 @@ function Overview({ lead }: { lead: LeadDetail }) {
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
             <Icon name="user" size={14} /> Contact
           </h3>
-          <dl className="space-y-1.5 text-xs">
-            <Row label="Email" value={lead.email} />
-            <Row label="Phone" value={lead.phone} />
-            <Row label="WhatsApp" value={lead.whatsapp} />
-            <Row label="LinkedIn" value={lead.linkedin_url} />
+          <div>
+            <InlineEdit label="Name" value={lead.full_name} disabled={!canWrite} onSave={(v) => v.trim() && save({ full_name: v.trim() })} />
+            <InlineEdit label="Title" value={lead.title ?? ""} disabled={!canWrite} onSave={(v) => save({ title: v.trim() || null })} />
+            <InlineEdit label="Email" type="email" value={lead.email ?? ""} disabled={!canWrite} onSave={(v) => save({ email: v.trim() || null })} />
+            <InlineEdit label="Phone" value={lead.phone ?? ""} disabled={!canWrite} onSave={(v) => save({ phone: v.trim() || null })} />
+            <InlineEdit label="WhatsApp" value={lead.whatsapp ?? ""} disabled={!canWrite} onSave={(v) => save({ whatsapp: v.trim() || null })} />
+            <InlineEdit label="LinkedIn" value={lead.linkedin_url ?? ""} disabled={!canWrite} onSave={(v) => save({ linkedin_url: v.trim() || null })} />
+          </div>
+          <dl className="mt-2 space-y-1.5 text-xs">
             <Row label="Source" value={LEAD_SOURCE_LABEL[lead.source]} />
           </dl>
         </div>
@@ -257,11 +292,14 @@ function Overview({ lead }: { lead: LeadDetail }) {
           <h3 className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-ink">
             <Icon name="building" size={14} /> Organization
           </h3>
-          <dl className="space-y-1.5 text-xs">
-            <Row label="Company" value={lead.company_name} />
+          <InlineEdit label="Company" value={lead.company_name ?? ""} disabled={!canWrite} onSave={(v) => save({ company_name: v.trim() || null })} />
+          <dl className="mt-2 space-y-1.5 text-xs">
             <Row label="Location" value={[lead.location_city, lead.location_country].filter(Boolean).join(", ")} />
             <Row label="Priority" value={PRIORITY_META[lead.priority].label} />
             {lead.pipeline === "sponsor" && <Row label="Sponsorship category" value={lead.sponsorship_category} />}
+            {lead.pipeline === "sponsor" && (
+              <Row label="Prospect score" value={lead.prospect_score != null ? `${lead.prospect_score}/10 · ${prospectTier(lead.prospect_score)?.tier}` : "Not scored"} />
+            )}
             {lead.pipeline === "investor" && <Row label="Investor type" value={lead.investor_type} />}
             {lead.pipeline === "investor" && <Row label="Ticket size" value={lead.ticket_size ? formatMoney(lead.ticket_size, lead.currency) : null} />}
             {lead.pipeline === "user_acquisition" && (
@@ -271,7 +309,21 @@ function Overview({ lead }: { lead: LeadDetail }) {
         </div>
       </div>
 
+      <LeadContacts lead={lead} />
+
       <div className="card-base space-y-3 p-4">
+        <Field label="Next action" hint="Every open lead needs an owner, a next action and a date. A lead with no next action is a forgotten lead.">
+          <Input
+            key={`na-${lead.id}`}
+            defaultValue={lead.next_action ?? ""}
+            disabled={!canWrite}
+            placeholder="e.g. Send Predict & Win one-pager to Brand Manager"
+            onBlur={(e) => {
+              const v = e.target.value.trim() || null;
+              if (v !== (lead.next_action ?? null)) save({ next_action: v });
+            }}
+          />
+        </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Assigned to">
             <Select

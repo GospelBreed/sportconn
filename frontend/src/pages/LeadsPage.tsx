@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useDeleteLead, useLeads, usePipelineStages, usePipelines, useUsers } from "@/hooks/queries";
 import { useDebounced } from "@/hooks/useDebounced";
@@ -6,12 +6,12 @@ import { useRealtime } from "@/hooks/useRealtime";
 import { useRole } from "@/lib/auth";
 import { useToast } from "@/components/ui/Toast";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Avatar, Button, Input, Select } from "@/components/ui/primitives";
+import { Avatar, Badge, Button, Input, Select } from "@/components/ui/primitives";
 import { Icon } from "@/components/ui/Icon";
 import { EmptyState, ErrorState, SkeletonRows } from "@/components/ui/states";
 import { ConfirmDialog } from "@/components/ui/overlays";
 import { FollowupBadge, StageBadge, StatusBadge, TemperatureBadge } from "@/components/ui/badges";
-import { LEAD_SOURCE_LABEL, LEAD_TYPE_LABEL } from "@/lib/constants";
+import { LEAD_SOURCE_LABEL, LEAD_TYPE_LABEL, prospectTier } from "@/lib/constants";
 import { formatCompactMoney } from "@/lib/money";
 import { formatRelative } from "@/lib/format";
 import { AddLeadModal } from "@/features/leads/AddLeadModal";
@@ -27,12 +27,15 @@ export function LeadsPage({
   title = "Leads",
   subtitle = "Every prospect across every pipeline, in one place.",
   emptyLabel = "lead",
+  renderSummary,
 }: {
   pipeline?: PipelineKey;
   eyebrow?: string;
   title?: string;
   subtitle?: string;
   emptyLabel?: string;
+  /** Optional pipeline-specific panel shown above the filters; can open a lead. */
+  renderSummary?: (openLead: (id: string) => void) => ReactNode;
 }) {
   const [params, setParams] = useSearchParams();
   const { canWrite, canDelete, canImport, canExport } = useRole();
@@ -126,6 +129,8 @@ export function LeadsPage({
         }
       />
 
+      {renderSummary?.(setSelected)}
+
       <div className="mt-5 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
         <div className="relative flex-1 lg:min-w-[220px]">
           <Icon name="search" size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -208,6 +213,7 @@ export function LeadsPage({
                   <th className="hidden px-4 py-3 font-semibold xl:table-cell">Type</th>
                   <th className="hidden px-4 py-3 font-semibold lg:table-cell">Location</th>
                   <th className="hidden px-4 py-3 font-semibold lg:table-cell">Owner</th>
+                  {lockedPipeline === "sponsor" && <th className="px-4 py-3 font-semibold">Score</th>}
                   <th className="px-4 py-3 font-semibold">Value</th>
                   <th className="px-4 py-3 font-semibold">Temp</th>
                   <th className="px-4 py-3 font-semibold">Stage</th>
@@ -239,6 +245,17 @@ export function LeadsPage({
                       {[l.location_city, l.location_country].filter(Boolean).join(", ") || "—"}
                     </td>
                     <td className="hidden px-4 py-3 text-muted lg:table-cell">{l.assignee?.full_name ?? "Unassigned"}</td>
+                    {lockedPipeline === "sponsor" && (
+                      <td className="px-4 py-3">
+                        {l.prospect_score != null ? (
+                          <Badge className={prospectTier(l.prospect_score)?.badge}>
+                            {prospectTier(l.prospect_score)?.tier} · {l.prospect_score}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted">—</span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-body">
                       {l.pipeline === "user_acquisition" ? `${l.actual_users}/${l.target_users ?? "—"}` : formatCompactMoney(l.expected_value, l.currency)}
                     </td>

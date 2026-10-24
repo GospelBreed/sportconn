@@ -284,6 +284,27 @@ export interface Lead {
   budget_status?: string | null;
   proposal_status?: string | null;
 
+  // sponsor execution (0004)
+  score_sports_fans?: number | null;
+  score_audience_fit?: number | null;
+  score_budget?: number | null;
+  score_decision_maker?: number | null;
+  score_opportunity?: number | null;
+  prospect_score?: number | null;
+  fit_reason?: string | null;
+  package_id?: string | null;
+  expected_decision_date?: string | null;
+  contract_status?: ContractStatus;
+  contract_value?: number | null;
+  invoice_number?: string | null;
+  payment_status?: PaymentStatus;
+  payment_due_date?: string | null;
+  amount_received?: number | null;
+  paid_at?: string | null;
+  vendor_registration?: VendorRegistration | null;
+  renewal_status?: RenewalStatus | null;
+  renewal_due_date?: string | null;
+
   investor_type?: string | null;
   ticket_size?: number | null;
   target_raise?: number | null;
@@ -322,6 +343,109 @@ export interface LeadDetail extends Lead {
   outreach: Outreach[];
   tasks: Task[];
   activities: Activity[];
+  contacts: LeadContact[];
+  approvals: DealApproval[];
+  deliverables: SponsorDeliverable[];
+}
+
+// ===================== Sponsor execution (0004) =====================
+
+export type ContractStatus = "not_started" | "drafting" | "sent" | "signed";
+export type PaymentStatus = "not_invoiced" | "invoiced" | "part_paid" | "paid";
+export type VendorRegistration = "not_required" | "required" | "in_progress" | "approved";
+export type RenewalStatus = "not_started" | "discussing" | "renewed" | "not_renewing";
+export type ApprovalType =
+  | "pricing_exception"
+  | "discount"
+  | "exclusivity"
+  | "contract_terms"
+  | "unusual_deliverable"
+  | "other";
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+export type DeliverableStatus = "planned" | "in_progress" | "delivered" | "cancelled";
+
+/** The five SOP qualification factors, each scored 0–2. */
+export type ScoreField =
+  | "score_sports_fans"
+  | "score_audience_fit"
+  | "score_budget"
+  | "score_decision_maker"
+  | "score_opportunity";
+
+export interface SponsorPackage {
+  id: string;
+  name: string;
+  description?: string | null;
+  list_price: number;
+  delivery_cost?: number | null;
+  min_margin_pct: number;
+  currency: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface LeadContact {
+  id: string;
+  lead_id: string;
+  full_name: string;
+  title?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  relevance?: string | null;
+  created_at: string;
+}
+
+export interface DealApproval {
+  id: string;
+  lead_id: string;
+  approval_type: ApprovalType;
+  summary: string;
+  status: ApprovalStatus;
+  requested_by?: string | null;
+  requested_at: string;
+  decided_by?: string | null;
+  decided_at?: string | null;
+  decision_note?: string | null;
+  requester?: Pick<AppUser, "id" | "full_name"> | null;
+  decider?: Pick<AppUser, "id" | "full_name"> | null;
+  leads?: Pick<Lead, "id" | "full_name" | "company_name"> | null;
+}
+
+export interface SponsorDeliverable {
+  id: string;
+  lead_id: string;
+  title: string;
+  due_date?: string | null;
+  owner?: string | null;
+  status: DeliverableStatus;
+  proof?: string | null;
+  delivered_at?: string | null;
+  created_at: string;
+  owner_user?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+export interface ScorecardTarget {
+  metric: string;
+  label: string;
+  target_min: number;
+  target_max?: number | null;
+}
+
+export interface SponsorScorecard {
+  from: string;
+  to: string;
+  companies: number;
+  contacts: number;
+  first_contacts: number;
+  replies: number;
+  meetings: number;
+  proposals: number;
+  paid: number;
+  paid_value: number;
+  pipeline_value: number;
+  pending_approvals: number;
+  targets: ScorecardTarget[];
 }
 
 // ===================== Facility (§10) =====================

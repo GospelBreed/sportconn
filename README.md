@@ -121,6 +121,11 @@ React SPA (Netlify)  ──supabase-js (anon key + user JWT)──▶  Supabase 
    3. [`supabase/migrations/0003_admin_governance.sql`](./supabase/migrations/0003_admin_governance.sql)
       — role hierarchy, `role_permissions` matrix, `audit_log`,
       `is_super_admin()` / `can_delete()`; delete gated by the matrix.
+   4. [`supabase/migrations/0004_sponsor_execution.sql`](./supabase/migrations/0004_sponsor_execution.sql)
+      — sponsor execution: prospect score, packages + delivery cost,
+      contract/payment, approvals, deliverables, extra contacts, 30-day
+      scorecard. **Apply it before deploying a frontend that includes it** —
+      the lead panel reads the new tables.
 3. *(Optional)* Run [`supabase/seed.sql`](./supabase/seed.sql) for fictional
    demo data (facilities, captains, campaigns, leads across every pipeline,
    outreach, tasks). Re-running is safe for the core rows; it will add
@@ -185,7 +190,9 @@ supabase/
   migrations/0001_init.sql        core schema + RLS + triggers + realtime
   migrations/0002_dealflow.sql    pipelines/stages, leads, campaigns, outreach, tasks, RPCs
   migrations/0003_admin_governance.sql  role hierarchy, role_permissions, audit_log
+  migrations/0004_sponsor_execution.sql  sponsor score, packages, approvals, deliverables, scorecard
   functions/manage-users/        Edge Function — privileged user management
+  functions/mcp-server/          Edge Function — the CRM as a Claude connector
   seed.sql                       optional fictional demo data
 frontend/
   src/lib/         supabase client, db helpers, auth, query client, branding, format

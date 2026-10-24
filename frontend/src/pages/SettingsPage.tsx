@@ -9,6 +9,7 @@ import { Avatar, Badge, Button, Field, Input } from "@/components/ui/primitives"
 import { ROLE_BADGE, ROLE_LABEL } from "@/lib/constants";
 import { AccessGovernance } from "@/features/settings/AccessGovernance";
 import { PipelineSettings } from "@/features/settings/PipelineSettings";
+import { SponsorSettings } from "@/features/settings/SponsorSettings";
 
 export function SettingsPage() {
   const { user, updateLocalUser } = useAuth();
@@ -82,6 +83,7 @@ export function SettingsPage() {
         </section>
 
         <PipelineSettings />
+        <SponsorSettings />
         <AccessGovernance />
       </div>
     </div>

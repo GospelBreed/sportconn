@@ -1,9 +1,17 @@
 import type {
   ActivityType,
+  ApprovalStatus,
+  ApprovalType,
   CampaignChannel,
   CampaignStatus,
   CampaignType,
+  ContractStatus,
+  DeliverableStatus,
   FacilityType,
+  PaymentStatus,
+  RenewalStatus,
+  ScoreField,
+  VendorRegistration,
   FollowUpType,
   LeadSource,
   LeadType,
@@ -73,6 +81,80 @@ export const PRIORITY_META: Record<Priority, { label: string; badge: string; dot
   high: { label: "High", badge: "bg-danger/12 text-danger", dot: "bg-danger" },
   medium: { label: "Medium", badge: "bg-warning/14 text-warning", dot: "bg-warning" },
   low: { label: "Low", badge: "bg-line text-muted", dot: "bg-muted" },
+};
+
+// ---------- Sponsor execution (0004) ----------
+export const SCORE_FACTORS: { field: ScoreField; label: string }[] = [
+  { field: "score_sports_fans", label: "Strong connection to sports fans" },
+  { field: "score_audience_fit", label: "Clear fit with SportConn's audience" },
+  { field: "score_budget", label: "Plausible marketing or activation budget" },
+  { field: "score_decision_maker", label: "Identifiable decision-maker or warm introduction" },
+  { field: "score_opportunity", label: "Clear campaign opportunity or business objective" },
+];
+
+/** SOP §4: 8–10 = A (contact first), 5–7 = B (research further), 0–4 = C (defer). */
+export function prospectTier(score?: number | null): { tier: "A" | "B" | "C"; label: string; badge: string } | null {
+  if (score === null || score === undefined) return null;
+  if (score >= 8) return { tier: "A", label: "Priority A — contact first", badge: "bg-success/12 text-success" };
+  if (score >= 5) return { tier: "B", label: "Priority B — research further", badge: "bg-warning/14 text-warning" };
+  return { tier: "C", label: "Priority C — defer", badge: "bg-line text-muted" };
+}
+
+export const CONTRACT_STATUSES: ContractStatus[] = ["not_started", "drafting", "sent", "signed"];
+export const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
+  not_started: "Not started",
+  drafting: "Drafting",
+  sent: "Sent for signature",
+  signed: "Signed",
+};
+
+export const PAYMENT_STATUSES: PaymentStatus[] = ["not_invoiced", "invoiced", "part_paid", "paid"];
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+  not_invoiced: "Not invoiced",
+  invoiced: "Invoiced",
+  part_paid: "Part paid",
+  paid: "Paid — confirmed by Finance",
+};
+
+export const VENDOR_REGISTRATIONS: VendorRegistration[] = ["not_required", "required", "in_progress", "approved"];
+export const VENDOR_REGISTRATION_LABEL: Record<VendorRegistration, string> = {
+  not_required: "Not required",
+  required: "Required — not started",
+  in_progress: "Documents submitted",
+  approved: "Approved as vendor",
+};
+
+export const RENEWAL_STATUSES: RenewalStatus[] = ["not_started", "discussing", "renewed", "not_renewing"];
+export const RENEWAL_STATUS_LABEL: Record<RenewalStatus, string> = {
+  not_started: "Not started",
+  discussing: "In discussion",
+  renewed: "Renewed",
+  not_renewing: "Not renewing",
+};
+
+export const APPROVAL_TYPES: ApprovalType[] = [
+  "pricing_exception", "discount", "exclusivity", "contract_terms", "unusual_deliverable", "other",
+];
+export const APPROVAL_TYPE_LABEL: Record<ApprovalType, string> = {
+  pricing_exception: "Pricing exception",
+  discount: "Discount",
+  exclusivity: "Category exclusivity",
+  contract_terms: "Contract terms",
+  unusual_deliverable: "Unusual deliverable",
+  other: "Other",
+};
+export const APPROVAL_STATUS_META: Record<ApprovalStatus, { label: string; cls: string }> = {
+  pending: { label: "Waiting for decision", cls: "bg-warning/14 text-warning" },
+  approved: { label: "Approved", cls: "bg-success/12 text-success" },
+  rejected: { label: "Rejected", cls: "bg-danger/12 text-danger" },
+};
+
+export const DELIVERABLE_STATUSES: DeliverableStatus[] = ["planned", "in_progress", "delivered", "cancelled"];
+export const DELIVERABLE_STATUS_META: Record<DeliverableStatus, { label: string; cls: string }> = {
+  planned: { label: "Planned", cls: "bg-line text-muted" },
+  in_progress: { label: "In progress", cls: "bg-info/12 text-info" },
+  delivered: { label: "Delivered", cls: "bg-success/12 text-success" },
+  cancelled: { label: "Cancelled", cls: "bg-line text-muted" },
 };
 
 // ---------- Source ----------
