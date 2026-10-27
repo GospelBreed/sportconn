@@ -15,6 +15,9 @@
 //   • leads marked "do not email" are refused
 //   • per-user daily cap (EMAIL_DAILY_LIMIT, default 100)
 //
+// Emails go out as plain text, from "<sender name> at SportConn" on the
+// EMAIL_FROM address, with Reply-To set to the sender's login email.
+//
 // Deploy:
 //   supabase secrets set RESEND_API_KEY=re_... EMAIL_FROM="SportConn Partnerships <partnerships@your-verified-domain>"
 //   supabase functions deploy send-email
@@ -52,21 +55,14 @@ function addressesIn(value: string | null | undefined): string[] {
   return (value ?? "").match(EMAIL_RE)?.map((a) => a.toLowerCase()) ?? [];
 }
 
-function escapeHtml(s: string) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-/** Plain text → simple HTML: paragraphs, line breaks, clickable links. */
-function toHtml(text: string) {
-  const linked = escapeHtml(text).replace(/(https?:\/\/[^\s<]+|www\.[^\s<]+)/g, (m) => {
-    const href = m.startsWith("http") ? m : `https://${m}`;
-    return `<a href="${href}">${m}</a>`;
-  });
-  const paras = linked
-    .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 14px">${p.replace(/\n/g, "<br>")}</p>`)
-    .join("");
-  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#17171F">${paras}</div>`;
+/**
+ * "Ada Obi at SportConn <partnerships@…>" — a person's name reads as one-to-one
+ * mail (better inbox placement than a team name). Falls back to EMAIL_FROM.
+ */
+function fromFor(senderName: string | null | undefined): string {
+  const address = EMAIL_FROM.match(/<([^>]+)>/)?.[1] ?? EMAIL_FROM.trim();
+  const name = (senderName ?? "").replace(/["<>\\\r\n]/g, "").trim();
+  return name ? `"${name} at SportConn" <${address}>` : EMAIL_FROM;
 }
 
 Deno.serve(async (req) => {
@@ -141,6 +137,8 @@ Deno.serve(async (req) => {
     }
 
     const replyTo = who.user.email ?? undefined;
+    const { data: profile } = await db.from("users").select("full_name").eq("id", who.user.id).maybeSingle();
+    const senderName = profile?.full_name ?? (who.user.user_metadata as Record<string, unknown> | null)?.full_name;
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -148,13 +146,13 @@ Deno.serve(async (req) => {
         "Content-Type": "application/json",
         "Idempotency-Key": typeof body.idempotency_key === "string" ? body.idempotency_key.slice(0, 256) : crypto.randomUUID(),
       },
+      // Plain text only: it reads as a personal email, not a marketing one.
       body: JSON.stringify({
-        from: EMAIL_FROM,
+        from: fromFor(typeof senderName === "string" ? senderName : null),
         to: [to],
         reply_to: replyTo,
         subject,
         text,
-        html: toHtml(text),
       }),
     });
     const sent = await res.json().catch(() => ({}));

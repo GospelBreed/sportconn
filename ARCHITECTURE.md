@@ -342,8 +342,10 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
   checked before sending, the lead must be readable, and the outreach log row
   is inserted with `created_by = caller`. Guards: recipient must be an address
   on the lead or its `lead_contacts`; opt-out refused; per-user daily cap
-  (`EMAIL_DAILY_LIMIT`). Secrets: `RESEND_API_KEY`, `EMAIL_FROM`. Reply-To is
-  the sender's login email. Templates (SOP §6) live in
+  (`EMAIL_DAILY_LIMIT`). Secrets: `RESEND_API_KEY`, `EMAIL_FROM` (its address
+  must be on the domain verified in Resend — currently `contact.sportconn.com`).
+  Mail is plain text only, From "<sender's name> at SportConn" on the EMAIL_FROM
+  address (inbox placement); Reply-To is the sender's login email. Templates (SOP §6) live in
   `frontend/src/features/leads/emailTemplates.ts`; unfilled `[placeholders]`
   block sending.
 - Not built: reply capture / open & bounce tracking (Resend webhooks), bulk sends.
