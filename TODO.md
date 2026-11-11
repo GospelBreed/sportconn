@@ -251,7 +251,13 @@ Mark items `[x]` as completed. Keep this file honest.
 - [x] Tested: 43 new DB checks + group 2 suite re-run on 0008; 9 helper unit tests; `deno check`; build green
 - [ ] Apply 0008, enable receiving + MX for the reply domain, REPLY_DOMAIN secret, Full-access Resend key,
       add `email.received` to the webhook, deploy email-engine + engine-api, deploy the frontend
+- [x] Deployed 2026-11-11
 - [ ] n8n: Workflow E (replies → classify) and follow-up drafting
+
+## Security fix — 0009
+- [x] Found 2026-11-11: reporting / eligibility RPCs (incl. pre-existing get_dashboard_summary, get_pipeline_metrics) were executable with the anon key
+- [x] `0009_lock_down_functions.sql`: revoke EXECUTE from public/anon on every sportconn function; staff + server keep access; engine/sender stay server-only; tested (anon blocked, staff + earlier suites pass)
+- [ ] Apply 0009 in production
 
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)
