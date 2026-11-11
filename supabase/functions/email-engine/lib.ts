@@ -16,9 +16,13 @@ export function fromFor(emailFrom: string, senderName: string | null | undefined
   return name ? `"${name} at SportConn" <${address}>` : emailFrom;
 }
 
-/** Plain-text body + unsubscribe footer pointing at the CRM's confirm page. */
+/**
+ * Plain-text body + an opt-out line written the way a person would, pointing
+ * at the CRM's confirm page. (No "--" divider or marketing wording: Gmail
+ * reads those as bulk mail.)
+ */
 export function withFooter(body: string, appUrl: string, token: string): string {
-  return `${body.trimEnd()}\n\n--\nIf you'd rather not hear from SportConn again, unsubscribe here: ${appUrl}/unsubscribe?t=${token}`;
+  return `${body.trimEnd()}\n\nIf this isn't relevant, just reply "no thanks" or use this link and I won't contact you again: ${appUrl}/unsubscribe?t=${token}`;
 }
 
 function b64ToBytes(b64: string): Uint8Array {

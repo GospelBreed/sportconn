@@ -13,16 +13,17 @@
 //                             RESEND_WEBHOOK_SECRET. Hard bounces and spam
 //                             complaints are added to the do-not-contact list.
 //
-//   POST /unsubscribe         One-click unsubscribe (RFC 8058, from mail
-//   GET  /unsubscribe?t=…     clients) and the CRM's public unsubscribe page.
+//   POST /unsubscribe         The CRM's public unsubscribe page (also accepts
+//   GET  /unsubscribe?t=…     RFC 8058 one-click, should that header return).
 //                             Auth: the message's unguessable token. GET only
 //                             redirects to the CRM page, which asks to confirm
 //                             — link scanners must not unsubscribe people.
 //
 // Emails are plain text, from "<approver's name> at SportConn" on the
-// EMAIL_FROM address, Reply-To the approver, with an unsubscribe footer and
-// List-Unsubscribe headers. Resend's Idempotency-Key is the message id, so a
-// retried send can't go out twice.
+// EMAIL_FROM address, Reply-To the approver, ending with a personal opt-out
+// line and link. No List-Unsubscribe header: it isn't required at a few dozen
+// emails a day, and Gmail files mail carrying it under Promotions. Resend's
+// Idempotency-Key is the message id, so a retried send can't go out twice.
 //
 // Deploy:
 //   supabase secrets set RESEND_WEBHOOK_SECRET=whsec_... APP_URL=https://<crm address>
@@ -40,7 +41,6 @@ const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("RESEND_WEBHOOK_SECRET") ?? "";
 const APP_URL = (Deno.env.get("APP_URL") ?? "https://sportconn-crm.netlify.app").replace(/\/+$/, "");
 
-const FUNCTION_URL = `${SUPABASE_URL}/functions/v1/email-engine`;
 const MAX_BATCH = 25;
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
@@ -89,7 +89,6 @@ async function runBatch(req: Request) {
   const results: Json[] = [];
 
   for (const m of claim.messages ?? []) {
-    const unsubUrl = `${FUNCTION_URL}/unsubscribe?t=${m.unsubscribe_token}`;
     let res: Response;
     let sent: Json = {};
     try {
@@ -106,10 +105,6 @@ async function runBatch(req: Request) {
           reply_to: m.sender_email ?? undefined,
           subject: m.subject,
           text: withFooter(m.body, APP_URL, m.unsubscribe_token),
-          headers: {
-            "List-Unsubscribe": `<${unsubUrl}>`,
-            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-          },
         }),
       });
       sent = (await res.json().catch(() => ({}))) as Json;

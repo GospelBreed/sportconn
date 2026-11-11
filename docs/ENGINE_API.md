@@ -232,7 +232,7 @@ addresses).
   "facts_to_verify": ["Season dates"],
   "confidence": 0.82 }
 ```
-Plain text, no unsubscribe line (the CRM adds it), no `[placeholders]` or
+Plain text, no opt-out/unsubscribe line (the CRM adds it), no `[placeholders]` or
 `{variables}`. If the copywriter returned `NEEDS_RESEARCH`, don't call this.
 
 → `201 {"ok":true,"email_id":"…","status":"draft","blocker":null,"eligibility":{…}}`
@@ -273,7 +273,10 @@ and hours (Lagos), and not while paused.
 ```
 
 Each email is plain text from "<approver's name> at SportConn", Reply-To the
-approver, with an unsubscribe line and one-click unsubscribe headers. Every
+approver, ending with a personal opt-out line ("If this isn't relevant, just
+reply 'no thanks' or use this link and I won't contact you again: …"). There is
+no List-Unsubscribe header: it isn't required at this volume and makes Gmail
+file the email under Promotions. Every
 send is logged on the lead's timeline. Temporary failures retry (up to 3
 attempts); permanent ones show under **Email review → Problems**.
 
@@ -288,7 +291,7 @@ lead).
 
 ### Unsubscribe
 `GET /unsubscribe?t=…` redirects to the CRM's confirmation page
-(`APP_URL/unsubscribe`); `POST` (mail clients' one-click, or the page's button)
+(`APP_URL/unsubscribe`); `POST` (the page's button)
 adds the address to the do-not-contact list and cancels any pending drafts to
 it.
 

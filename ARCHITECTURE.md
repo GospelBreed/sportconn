@@ -414,8 +414,11 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
   one-to-one sends). Webhook auth = Svix HMAC (`email-engine/lib.ts`, tested
   against Svix's published vector).
 - **Unsubscribe**: per-message `unsubscribe_token`; footer link → public
-  `/unsubscribe` page in the app (confirm button); `List-Unsubscribe` +
-  `List-Unsubscribe-Post` one-click → POST. GET never unsubscribes.
+  `/unsubscribe` page in the app (confirm button) → POST. GET never
+  unsubscribes. The footer is a personal opt-out line, and there is no
+  `List-Unsubscribe` header (dropped after a test landed in Gmail Promotions;
+  not required below bulk-sender volumes). The POST route still accepts RFC
+  8058 one-click if the header is ever reinstated.
 - All writers (`engine_set_eligibility`, `engine_create_draft`, `email_claim_batch`,
   `email_mark_*`, `email_apply_event`, `email_unsubscribe`) are service-role only.
 

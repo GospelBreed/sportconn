@@ -209,7 +209,7 @@ function EmailCard({ m }: { m: EmailMessage }) {
           <>
             <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} aria-label="Subject" />
             <Textarea value={body} onChange={(e) => setBody(e.target.value)} className="min-h-[200px]" aria-label="Message" />
-            <p className="text-[11px] text-muted">An unsubscribe line is added automatically when the email is sent.</p>
+            <p className="text-[11px] text-muted">An opt-out line (“If this isn't relevant, just reply ‘no thanks’ or use this link…”) is added automatically when the email is sent.</p>
           </>
         ) : (
           <>

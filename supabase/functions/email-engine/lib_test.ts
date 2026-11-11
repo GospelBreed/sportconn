@@ -36,9 +36,10 @@ Deno.test("fromFor: sender name, fallback, header injection", () => {
   assert(!/[\r\n<>"]/.test(fromFor(from, 'Evil" <x@y.com>\r\nBcc: z').slice(1, -40)), "injection stripped");
 });
 
-Deno.test("withFooter: unsubscribe link appended once, at the end", () => {
+Deno.test("withFooter: personal opt-out line with the link, at the end", () => {
   const out = withFooter("Hello Ada,\n\nThanks.\n\n", "https://crm.example.com", "tok-123");
-  assert(out.startsWith("Hello Ada,\n\nThanks.\n\n--\n"), "body kept, trailing space trimmed");
+  assert(out.startsWith(`Hello Ada,\n\nThanks.\n\nIf this isn't relevant, just reply "no thanks"`), "body kept, trailing space trimmed");
+  assert(!out.includes("\n--\n"), "no signature divider");
   assert(out.endsWith("https://crm.example.com/unsubscribe?t=tok-123"), "link at the end");
 });
 
