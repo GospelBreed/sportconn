@@ -18,6 +18,7 @@ export type NavKey =
   | "pipeline"
   | "sponsors"
   | "email_queue"
+  | "engine_dashboard"
   | "investors"
   | "facilities"
   | "partners"
@@ -195,7 +196,8 @@ export type NotificationType =
   | "task_due"
   | "task_overdue"
   | "deal_won"
-  | "deal_lost";
+  | "deal_lost"
+  | "email_reply";
 
 export type TaskStatus = "to_do" | "in_progress" | "completed" | "cancelled";
 
@@ -473,6 +475,8 @@ export interface EmailMessage {
   facts_to_verify: unknown[];
   confidence?: number | null;
   sequence_step: number;
+  follow_up_of?: string | null;
+  replied_at?: string | null;
   review_note?: string | null;
   reviewed_by?: string | null;
   reviewed_at?: string | null;
@@ -499,7 +503,75 @@ export interface EmailSettings {
   require_review: boolean;
   default_sender_id?: string | null;
   sending_paused: boolean;
+  max_followups: number;
+  followup_1_after_days: number;
+  followup_2_after_days: number;
   updated_at: string;
+}
+
+// ===================== Replies + engine dashboard (0008) =====================
+
+export type ReplyClassification =
+  | "interested"
+  | "meeting_requested"
+  | "needs_information"
+  | "not_interested"
+  | "unsubscribe"
+  | "out_of_office"
+  | "other";
+
+export interface EmailReply {
+  id: string;
+  lead_id?: string | null;
+  email_message_id?: string | null;
+  matched_by: "reply_address" | "sender_address" | "none";
+  from_email: string;
+  from_name?: string | null;
+  subject?: string | null;
+  body_text?: string | null;
+  received_at: string;
+  classification?: ReplyClassification | null;
+  summary?: string | null;
+  suggested_response?: string | null;
+  classified_by?: "ai" | "staff" | null;
+  handled: boolean;
+  handled_at?: string | null;
+  leads?: Pick<Lead, "id" | "full_name" | "company_name"> | null;
+  email?: Pick<EmailMessage, "id" | "subject" | "sequence_step"> | null;
+  handler?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+export interface EngineDashboard {
+  from: string;
+  to: string;
+  leads_created: number;
+  priority_80_plus: number;
+  qualified_65_79: number;
+  avg_score: number | null;
+  contacts_found: number;
+  contacts_verified: number;
+  contacts_eligible: number;
+  drafts_waiting: number;
+  queued: number;
+  emails_sent: number;
+  first_emails_sent: number;
+  followups_sent: number;
+  delivered: number;
+  bounced: number;
+  complaints: number;
+  unsubscribes: number;
+  replies: number;
+  positive_replies: number;
+  meeting_requests: number;
+  not_interested: number;
+  replies_unread: number;
+  replies_unmatched: number;
+  meetings_held: number;
+  proposals: number;
+  deals_won: number;
+  revenue: number;
+  pipeline_value: number;
+  daily: { date: string; leads: number; sent: number; replies: number }[];
 }
 
 export interface EngineRun {

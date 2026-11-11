@@ -11,6 +11,7 @@ import type {
   EligibilityStatus,
   EmailMessageStatus,
   LawfulBasis,
+  ReplyClassification,
   VerificationStatus,
   FacilityType,
   PaymentStatus,
@@ -168,6 +169,18 @@ export const EMAIL_STATUS_META: Record<EmailMessageStatus, { label: string; cls:
   failed: { label: "Failed", cls: "bg-danger/12 text-danger" },
   rejected: { label: "Rejected", cls: "bg-line text-muted" },
   cancelled: { label: "Cancelled", cls: "bg-line text-muted" },
+};
+export const REPLY_CLASSES: ReplyClassification[] = [
+  "interested", "meeting_requested", "needs_information", "not_interested", "unsubscribe", "out_of_office", "other",
+];
+export const REPLY_CLASS_META: Record<ReplyClassification, { label: string; cls: string }> = {
+  interested: { label: "Interested", cls: "bg-success/12 text-success" },
+  meeting_requested: { label: "Wants a meeting", cls: "bg-success/12 text-success" },
+  needs_information: { label: "Needs information", cls: "bg-info/12 text-info" },
+  not_interested: { label: "Not interested", cls: "bg-line text-muted" },
+  unsubscribe: { label: "Asked to stop", cls: "bg-danger/12 text-danger" },
+  out_of_office: { label: "Out of office", cls: "bg-line text-muted" },
+  other: { label: "Other", cls: "bg-line text-muted" },
 };
 export const WEEKDAYS: { iso: number; label: string }[] = [
   { iso: 1, label: "Mon" }, { iso: 2, label: "Tue" }, { iso: 3, label: "Wed" }, { iso: 4, label: "Thu" },
@@ -389,6 +402,7 @@ export const NOTIFICATION_LABEL: Record<NotificationType, string> = {
   task_overdue: "Task overdue",
   deal_won: "Deal won",
   deal_lost: "Deal lost",
+  email_reply: "Email reply",
 };
 
 // ---------- Campaigns ----------
@@ -477,6 +491,7 @@ export const NAV_KEYS = [
   "pipeline",
   "sponsors",
   "email_queue",
+  "engine_dashboard",
   "investors",
   "facilities",
   "partners",
@@ -494,6 +509,7 @@ export const NAV_LABELS: Record<string, string> = {
   pipeline: "Pipeline",
   sponsors: "Sponsors",
   email_queue: "Email review",
+  engine_dashboard: "Engine dashboard",
   investors: "Investors",
   facilities: "Facilities",
   partners: "Partners",

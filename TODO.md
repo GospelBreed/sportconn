@@ -237,7 +237,21 @@ Mark items `[x]` as completed. Keep this file honest.
       `deno check`; `npm run build` green
 - [ ] Apply 0007, set APP_URL + RESEND_WEBHOOK_SECRET, deploy email-engine + engine-api, add the Resend
       webhook, schedule `/run`, deploy the frontend
-- [ ] Group 3: reply capture, follow-up sequences, engine dashboard metrics
+- [x] Deployed 2026-11-11; end-to-end queue test passed (then: personal opt-out line, no List-Unsubscribe header)
+
+## Phase 19 — AI Partnership Acquisition Engine, group 3 (replies, follow-ups, dashboard)
+- [x] `0008_engine_replies_followups.sql`: email_replies + record/classify RPCs, follow-up chains (max 2,
+      spacing, stop on reply at approval and send time), followups-due, get_engine_dashboard, email_reply
+      notifications, per-company limit skips free-mail domains
+- [x] email-engine: per-message reply address (REPLY_DOMAIN), `email.received` → fetch body → record →
+      forward to approver/owner
+- [x] engine-api: `GET /emails/followups-due`, `GET /replies`, `POST /replies/{id}/classify`, `GET /dashboard`,
+      `follow_up_of` on `POST /emails/draft`
+- [x] UI: Email review → Replies, Engine dashboard page, follow-up settings, reply notifications
+- [x] Tested: 43 new DB checks + group 2 suite re-run on 0008; 9 helper unit tests; `deno check`; build green
+- [ ] Apply 0008, enable receiving + MX for the reply domain, REPLY_DOMAIN secret, Full-access Resend key,
+      add `email.received` to the webhook, deploy email-engine + engine-api, deploy the frontend
+- [ ] n8n: Workflow E (replies → classify) and follow-up drafting
 
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)

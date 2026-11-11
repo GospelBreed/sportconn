@@ -11,7 +11,8 @@ import {
 } from "@/hooks/queries";
 import type { AppNotification } from "@/types";
 
-const ICON: Record<AppNotification["type"], "clock" | "folder" | "flag" | "alert" | "person" | "check"> = {
+const ICON: Record<AppNotification["type"], "clock" | "folder" | "flag" | "alert" | "person" | "check" | "mail"> = {
+  email_reply: "mail",
   follow_up_due: "clock",
   follow_up_overdue: "alert",
   stage_change: "flag",

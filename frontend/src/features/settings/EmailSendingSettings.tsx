@@ -81,6 +81,16 @@ export function EmailSendingSettings() {
         <Field label="Stop sending at (Lagos)">{num("send_hour_end", 1, 24)}</Field>
       </div>
 
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Field label="Follow-ups per contact (max 2)">{num("max_followups", 0, 2)}</Field>
+        <Field label="Days before follow-up 1">{num("followup_1_after_days", 1, 60)}</Field>
+        <Field label="Days before follow-up 2">{num("followup_2_after_days", 1, 60)}</Field>
+      </div>
+      <p className="mt-1 text-xs text-muted">
+        Follow-ups stop automatically as soon as anyone at the company replies. Each one is drafted by the engine and
+        reviewed here like any other email.
+      </p>
+
       <div className="mt-3">
         <span className="text-xs font-semibold text-muted">Sending days</span>
         <div className="mt-1 flex flex-wrap gap-1.5">

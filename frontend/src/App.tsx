@@ -19,6 +19,7 @@ import { CampaignsPage } from "@/pages/CampaignsPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { EmailQueuePage } from "@/pages/EmailQueuePage";
+import { EngineDashboardPage } from "@/pages/EngineDashboardPage";
 import { UnsubscribePage } from "@/pages/UnsubscribePage";
 
 function FullScreenLoader() {
@@ -65,6 +66,7 @@ export function App() {
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/sponsors" element={<SponsorsPage />} />
         <Route path="/email-review" element={<EmailQueuePage />} />
+        <Route path="/engine" element={<EngineDashboardPage />} />
         <Route path="/investors" element={<InvestorsPage />} />
         <Route path="/partners" element={<PartnersPage />} />
         <Route path="/user-acquisition" element={<UserAcquisitionPage />} />

@@ -357,7 +357,10 @@ async function createDraft(body: Json) {
   }
   const res = data as Json;
   if (res.ok === false) {
-    const conflict = ["already_queued", "recently_contacted", "suppressed", "lead_closed"].includes(String(res.error));
+    const conflict = [
+      "already_queued", "recently_contacted", "suppressed", "lead_closed",
+      "replied", "already_followed_up", "max_followups", "follow_up_too_soon", "follow_up_not_due",
+    ].includes(String(res.error));
     return json(res, conflict ? 409 : 422);
   }
   return json(res, 201);
@@ -394,6 +397,60 @@ async function emailStatus(url: URL) {
 }
 
 // ---------------------------------------------------------------------------
+// Replies, follow-ups, dashboard (0008)
+// ---------------------------------------------------------------------------
+
+async function followupsDue(url: URL) {
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "50") || 50, 1), 200);
+  const { data, error } = await db.rpc("email_followups_due", { p_limit: limit });
+  if (error) throw error;
+  return json(data);
+}
+
+async function listReplies(url: URL) {
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "100") || 100, 1), 500);
+  const status = url.searchParams.get("status") ?? "unclassified";
+  let query = db
+    .from("email_replies")
+    .select("id,lead_id,email_message_id,matched_by,from_email,from_name,subject,body_text,received_at,classification,summary,handled," +
+      "leads:lead_id(id,full_name,company_name,pipeline,stage), email:email_message_id(id,subject,body,sequence_step)")
+    .order("received_at", { ascending: true })
+    .limit(limit);
+  if (status === "unclassified") query = query.is("classification", null).not("lead_id", "is", null);
+  else if (status === "unhandled") query = query.eq("handled", false);
+  else if (status !== "all") return fail(400, "invalid_status", "status must be unclassified, unhandled or all");
+  const since = url.searchParams.get("since");
+  if (since) {
+    if (Number.isNaN(Date.parse(since))) return fail(400, "invalid_since", "since must be an ISO date/time");
+    query = query.gte("received_at", since);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return json({ results: data });
+}
+
+async function classifyReply(id: string, body: Json) {
+  if (!UUID_RE.test(id)) return fail(400, "invalid_id", "Reply id must be a uuid");
+  const actor = await getEngineUserId();
+  const { data, error } = await db.rpc("engine_classify_reply", { p_id: id, p: body, p_actor: actor });
+  if (error) throw error;
+  const res = data as Json;
+  if (res.ok === false) return json(res, res.error === "not_found" ? 404 : 422);
+  return json(res);
+}
+
+async function dashboard(url: URL) {
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  for (const v of [from, to]) {
+    if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) return fail(400, "invalid_date", "from/to must be YYYY-MM-DD");
+  }
+  const { data, error } = await db.rpc("get_engine_dashboard", { p_from: from, p_to: to });
+  if (error) throw error;
+  return json(data);
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
@@ -414,6 +471,9 @@ Deno.serve(async (req) => {
     if (m === "GET" && path === "/stats") return await stats(url);
     if (m === "GET" && path === "/contacts/eligibility") return await getEligibility(url);
     if (m === "GET" && path === "/emails/status") return await emailStatus(url);
+    if (m === "GET" && path === "/emails/followups-due") return await followupsDue(url);
+    if (m === "GET" && path === "/replies") return await listReplies(url);
+    if (m === "GET" && path === "/dashboard") return await dashboard(url);
 
     if (m === "POST" || m === "PATCH") {
       const body = await readBody(req);
@@ -425,6 +485,7 @@ Deno.serve(async (req) => {
       if (m === "POST" && path === "/contacts/eligibility") return await setEligibility(body);
       if (m === "POST" && (path === "/emails/draft" || path === "/emails/queue")) return await createDraft(body);
       if (m === "PATCH" && parts[0] === "leads" && parts.length === 2) return await patchLead(parts[1], body);
+      if (m === "POST" && parts[0] === "replies" && parts[2] === "classify" && parts.length === 3) return await classifyReply(parts[1], body);
       if (m === "PATCH" && parts[0] === "runs" && parts.length === 2) return await finishRun(parts[1], body);
     }
     return fail(404, "not_found", `No route for ${m} ${path}`);

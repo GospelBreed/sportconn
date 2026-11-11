@@ -247,11 +247,59 @@ Refusals: `409` `already_queued` (a live draft exists for that address),
 `address_not_on_lead`, `missing_content`, `too_long`, `invalid_confidence`,
 `lead_not_found`.
 
+#### Follow-ups
+Send `"follow_up_of": "<email_id of the sent email it follows>"` (lead and
+address are taken from that email). Rules: at most **2** follow-ups per contact
+(Settings → Email sending), the first no sooner than **4** days after the first
+email and the second **7** days after the first follow-up; none once anyone at
+the company has replied; one follow-up per email. Extra refusals (`409`):
+`replied`, `already_followed_up`, `max_followups`, `follow_up_too_soon`,
+`follow_up_not_due`; (`422`) `follow_up_mismatch`, `follow_up_of_not_found`.
+Write follow-ups as a short, polite nudge — usually with `Re: <original subject>`.
+
+### `GET /emails/followups-due?limit=50`
+Conversations ready for their next follow-up right now (sent, no reply, spacing
+elapsed, not blocked): `{"ok":true,"results":[{"follow_up_of","lead_id",
+"company","to","to_name","next_step","previous_subject","previous_body",
+"previous_sent_at"}]}`. Feed each into the copywriter, then `POST /emails/draft`
+with `follow_up_of`.
+
 ### `GET /emails/status?since=ISO&status=sent,delivered&lead_id=…&limit=200`
 Latest state of queue emails: `draft`, `approved` (queued), `sending`, `sent`
 (accepted by Resend), `delivered`, `bounced`, `complained`, `failed`,
 `rejected`, `cancelled` — with timestamps and any error. A successful send is
 `sent`; only `delivered` means it reached the recipient's mail server.
+
+### `GET /replies?status=unclassified|unhandled|all&since=ISO&limit=100`
+Replies received from prospects (oldest first), with the lead and the email
+they answered: `id`, `lead_id`, `from_email`, `from_name`, `subject`,
+`body_text`, `received_at`, `classification`, `summary`, `handled`, `leads`,
+`email`. Default `unclassified` = matched to a lead, not yet read by the AI.
+
+### `POST /replies/{id}/classify` — Workflow E
+```json
+{ "classification": "meeting_requested",
+  "summary": "Wants a call on Thursday about a pilot",
+  "suggested_response": "Hi Ada, Thursday works — would 11:00 suit? …" }
+```
+`classification`: `interested`, `meeting_requested`, `needs_information`,
+`not_interested`, `unsubscribe`, `out_of_office`, `other`. Effects in the CRM:
+interested / meeting requested → lead hot + high priority, moved forward to
+Engaged/Interested or Discovery (never backwards), next action set; needs
+information → next action "Send the information they asked for"; not interested
+→ cold, a person decides Lost or nurture; unsubscribe → do-not-contact list.
+The suggested response is shown to the team — it is **never sent automatically**.
+
+Any reply already stopped that company's pending follow-ups and notified the
+approver and lead owner the moment it arrived.
+
+### `GET /dashboard?from=YYYY-MM-DD&to=YYYY-MM-DD`
+The blueprint's acquisition metrics for the window (default last 30 days, Lagos
+dates): leads created (by score band), contacts found / verified / eligible,
+emails sent (first vs follow-ups), delivered, bounced, complaints,
+unsubscribes, replies, positive replies, meeting requests, meetings held,
+proposals, deals won, revenue, pipeline value, plus a `daily` series. The same
+numbers are on the CRM's **Engine dashboard** page.
 
 ---
 
@@ -289,6 +337,17 @@ Supabase secret. Hard bounces and spam complaints are added to the
 do-not-contact list automatically (also for one-to-one emails sent from a
 lead).
 
+### Replies (`email.received`)
+With the `REPLY_DOMAIN` secret set (e.g. `contact.sportconn.com`, with
+receiving switched on for it in Resend), every queue email's Reply-To is
+`reply+<message token>@contact.sportconn.com`. Add `email.received` to the
+Resend webhook. A reply is read from Resend, saved on the lead (Email review →
+Replies, and the lead's timeline), stops that company's follow-ups, notifies the
+approver and lead owner in the CRM, and is forwarded to them by email with
+Reply-To set to the prospect — so they answer from their own inbox. Reading
+received mail needs a Resend API key with **Full access**. Without
+`REPLY_DOMAIN`, replies go straight to the approver and aren't captured.
+
 ### Unsubscribe
 `GET /unsubscribe?t=…` redirects to the CRM's confirmation page
 (`APP_URL/unsubscribe`); `POST` (the page's button)
@@ -313,7 +372,8 @@ it.
 | D Email sending engine | schedule `POST email-engine/run` |
 | D Monitor delivery events / update CRM | Resend webhook → `email-engine/webhooks/resend`; read `GET /emails/status` |
 
-**Not available yet** (next build stage): reply capture and reply
-classification, automatic follow-up sequences (stop on reply), and the
-engine performance dashboard. Until then, replies arrive in the approver's own
-inbox — log them on the lead by hand.
+| E Replies and follow-ups | `GET /replies` → Claude → `POST /replies/{id}/classify`; `GET /emails/followups-due` → Claude → `POST /emails/draft` with `follow_up_of` |
+| §8 Acquisition dashboard | `GET /dashboard` (or the CRM's Engine dashboard page) |
+
+Every blueprint workflow now has its CRM endpoints. Sending stays under human
+review until you switch review off in Settings — the blueprint's phase 4.

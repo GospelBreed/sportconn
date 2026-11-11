@@ -8,10 +8,14 @@
 //                             Supabase Cron, every 10–15 min).
 //                             Auth: Bearer ENGINE_API_KEY.
 //
-//   POST /webhooks/resend     Resend delivery events (delivered, bounced,
-//                             complained, opened…). Auth: Svix signature with
-//                             RESEND_WEBHOOK_SECRET. Hard bounces and spam
-//                             complaints are added to the do-not-contact list.
+//   POST /webhooks/resend     Resend events. Delivery events (delivered,
+//                             bounced, complained, opened…): hard bounces and
+//                             spam complaints go on the do-not-contact list.
+//                             email.received (replies): the message is fetched
+//                             from Resend, stored against its lead
+//                             (email_record_reply), and a copy is forwarded to
+//                             the approver / lead owner with Reply-To the
+//                             prospect. Auth: Svix signature, RESEND_WEBHOOK_SECRET.
 //
 //   POST /unsubscribe         The CRM's public unsubscribe page (also accepts
 //   GET  /unsubscribe?t=…     RFC 8058 one-click, should that header return).
@@ -20,8 +24,9 @@
 //                             — link scanners must not unsubscribe people.
 //
 // Emails are plain text, from "<approver's name> at SportConn" on the
-// EMAIL_FROM address, Reply-To the approver, ending with a personal opt-out
-// line and link. No List-Unsubscribe header: it isn't required at a few dozen
+// EMAIL_FROM address, ending with a personal opt-out line and link. Reply-To
+// is reply+<message token>@REPLY_DOMAIN when REPLY_DOMAIN is set (replies are
+// captured and matched to the exact email), otherwise the approver's address. No List-Unsubscribe header: it isn't required at a few dozen
 // emails a day, and Gmail files mail carrying it under Promotions. Resend's
 // Idempotency-Key is the message id, so a retried send can't go out twice.
 //
@@ -29,9 +34,11 @@
 //   supabase secrets set RESEND_WEBHOOK_SECRET=whsec_... APP_URL=https://<crm address>
 //   supabase functions deploy email-engine --no-verify-jwt
 // Uses RESEND_API_KEY, EMAIL_FROM (set for send-email) and ENGINE_API_KEY.
+// Reply capture: REPLY_DOMAIN (a Resend receiving domain, e.g. contact.sportconn.com);
+// RESEND_API_KEY then needs permission to read received emails (Full access).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { fromFor, safeEqual, verifySvix, withFooter } from "./lib.ts";
+import { forwardText, fromFor, htmlToText, replyAddress, safeEqual, verifySvix, withFooter } from "./lib.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -40,6 +47,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("RESEND_WEBHOOK_SECRET") ?? "";
 const APP_URL = (Deno.env.get("APP_URL") ?? "https://sportconn-crm.netlify.app").replace(/\/+$/, "");
+const REPLY_DOMAIN = (Deno.env.get("REPLY_DOMAIN") ?? "").trim().toLowerCase();
 
 const MAX_BATCH = 25;
 
@@ -70,6 +78,7 @@ interface Claimed {
   subject: string;
   body: string;
   unsubscribe_token: string;
+  reply_token: string;
   sender_name: string | null;
   sender_email: string | null;
 }
@@ -102,7 +111,7 @@ async function runBatch(req: Request) {
         body: JSON.stringify({
           from: fromFor(EMAIL_FROM, m.sender_name),
           to: [m.to],
-          reply_to: m.sender_email ?? undefined,
+          reply_to: replyAddress(REPLY_DOMAIN, m.reply_token, m.sender_email),
           subject: m.subject,
           text: withFooter(m.body, APP_URL, m.unsubscribe_token),
         }),
@@ -155,12 +164,75 @@ async function resendWebhook(req: Request) {
     return fail(400, "invalid_json", "Body must be valid JSON");
   }
   const type = String(event.type ?? "");
-  const providerId = String((event.data as Json | undefined)?.email_id ?? "");
+  const eventData = (event.data ?? {}) as Json;
+  const providerId = String(eventData.email_id ?? "");
   if (!type || !providerId) return json({ ok: true, ignored: true });
+
+  if (type === "email.received") return await receiveReply(providerId, eventData);
 
   const { data, error } = await db.rpc("email_apply_event", { p_event_id: id, p_type: type, p_provider_id: providerId, p_payload: event });
   if (error) throw error;
   return json(data);
+}
+
+/**
+ * An inbound email (a reply). The webhook carries only metadata, so the body
+ * is read from Resend's Received emails API. If that read fails (e.g. the API
+ * key only has sending access) the reply is still recorded, with a note.
+ */
+async function receiveReply(providerId: string, meta: Json) {
+  let content: Json = {};
+  let readError: string | null = null;
+  try {
+    const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(providerId)}`, {
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}` },
+    });
+    content = (await res.json().catch(() => ({}))) as Json;
+    if (!res.ok) readError = typeof content.message === "string" ? content.message : `status ${res.status}`;
+  } catch (e) {
+    readError = e instanceof Error ? e.message : String(e);
+  }
+  const text =
+    (typeof content.text === "string" && content.text.trim()) ||
+    (typeof content.html === "string" ? htmlToText(content.html) : "") ||
+    `(The message text couldn't be read from Resend${readError ? `: ${readError}` : ""}. Open it in Resend → Emails → Receiving.)`;
+
+  const { data, error } = await db.rpc("email_record_reply", {
+    p: {
+      provider_id: providerId,
+      from: content.from ?? meta.from,
+      to: Array.isArray(content.to) ? content.to : meta.to,
+      subject: content.subject ?? meta.subject,
+      text,
+      received_at: content.created_at ?? meta.created_at,
+    },
+  });
+  if (error) throw error;
+  const rec = data as Json & { notify?: { email: string; full_name: string }[]; duplicate?: boolean };
+
+  // Forward a copy so the conversation can continue from the person's own inbox.
+  if (!rec.duplicate && rec.ok && rec.notify?.length) {
+    const fromLine = String(content.from ?? meta.from ?? "");
+    const subject = String(content.subject ?? meta.subject ?? "(no subject)");
+    for (const person of rec.notify) {
+      try {
+        await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `reply-${providerId}-${person.email}` },
+          body: JSON.stringify({
+            from: fromFor(EMAIL_FROM, "SportConn CRM"),
+            to: [person.email],
+            reply_to: fromLine || undefined,
+            subject: `Reply from ${rec.company ?? fromLine}: ${subject}`.slice(0, 200),
+            text: forwardText({ from: fromLine, company: String(rec.company ?? ""), text, leadUrl: rec.lead_id ? `${APP_URL}/leads?focus=${rec.lead_id}` : `${APP_URL}/email-review` }),
+          }),
+        });
+      } catch (e) {
+        console.error("reply forward failed", person.email, e instanceof Error ? e.message : e);
+      }
+    }
+  }
+  return json({ ok: true, reply: rec });
 }
 
 // ---------------------------------------------------------------------------

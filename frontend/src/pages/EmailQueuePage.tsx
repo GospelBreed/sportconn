@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   useEmailCount,
+  useUnhandledReplyCount,
   useEmailMessages,
   useEmailSettings,
   useEmailsSentSince,
@@ -18,6 +19,7 @@ import { EmptyState, ErrorState, SkeletonRows } from "@/components/ui/states";
 import { EMAIL_STATUS_META, WEEKDAYS, prospectTier } from "@/lib/constants";
 import { formatDateTime, formatRelative } from "@/lib/format";
 import { openPlaceholders } from "@/features/leads/emailTemplates";
+import { RepliesPanel } from "@/features/email/RepliesPanel";
 import type { EmailMessage, EmailMessageStatus } from "@/types";
 
 type View = "review" | "queued" | "sent" | "problems" | "closed";
@@ -36,11 +38,13 @@ function lagosDayStartIso(): string {
 }
 
 export function EmailQueuePage() {
-  const [view, setView] = useState<View>("review");
+  const [view, setView] = useState<View | "replies">("review");
   useRealtime("email_messages", [["email-messages"]]);
+  useRealtime("email_replies", [["email-replies"]]);
   const reviewCount = useEmailCount(VIEWS.review.statuses);
   const queuedCount = useEmailCount(VIEWS.queued.statuses);
   const problemCount = useEmailCount(VIEWS.problems.statuses);
+  const replyCount = useUnhandledReplyCount();
 
   return (
     <div className="p-5 sm:p-6">
@@ -55,6 +59,7 @@ export function EmailQueuePage() {
           active={view}
           onChange={setView}
           tabs={[
+            { key: "replies" as const, label: "Replies", count: replyCount.data || undefined },
             { key: "review", label: VIEWS.review.label, count: reviewCount.data ?? 0 },
             { key: "queued", label: VIEWS.queued.label, count: queuedCount.data ?? 0 },
             { key: "sent", label: VIEWS.sent.label },
@@ -63,7 +68,7 @@ export function EmailQueuePage() {
           ]}
         />
         <div className="pt-4">
-          <MessageList view={view} />
+          {view === "replies" ? <RepliesPanel /> : <MessageList view={view} />}
         </div>
       </div>
     </div>

@@ -422,6 +422,32 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
 - All writers (`engine_set_eligibility`, `engine_create_draft`, `email_claim_batch`,
   `email_mark_*`, `email_apply_event`, `email_unsubscribe`) are service-role only.
 
+### 3.18 Replies, follow-ups, dashboard — migration `0008_engine_replies_followups.sql`
+
+- **Replies**: `email_replies` (unique `provider_id` = Resend inbound id).
+  `email-engine` sets Reply-To `reply+<email_messages.reply_token>@REPLY_DOMAIN`;
+  on `email.received` it fetches the body (`GET /emails/receiving/{id}`), calls
+  `email_record_reply` (match: token → exact message; else latest message /
+  outreach / lead / contact for the sender), which logs inbound `outreach`
+  (outcome `replied`), marks the original outreach + message replied, cancels
+  that lead's pending follow-ups, and inserts `email_reply` notifications for
+  the approver and lead owner; the function then forwards a copy to them with
+  Reply-To = prospect. Staff may only change `classification` and `handled`
+  (`email_replies_guard`).
+- **Follow-ups**: `email_messages.follow_up_of` + `sequence_step`. Limits in
+  `email_settings` (`max_followups` ≤ 2, `followup_1_after_days` 4,
+  `followup_2_after_days` 7). `email_followup_blocker` (parent bounced/complained,
+  not yet sent, or any reply from the lead/address since) is combined with
+  `email_send_blocker` in `email_message_blocker`, used at approval (guard) and
+  at send time (claim). `engine_create_draft` validates the chain and skips the
+  new-contact gap for follow-ups. `email_followups_due` lists ready conversations.
+- **Classification**: `engine_classify_reply` sets the category and applies the
+  CRM effects (temperature/priority/forward-only stage move/next action;
+  unsubscribe → suppression). Suggested responses are stored, never sent.
+- **Dashboard**: `get_engine_dashboard(from, to)` (authenticated) — Engine
+  dashboard page and `engine-api GET /dashboard`.
+- **Per-company limit** in `email_claim_batch` skips `is_free_email_domain()`.
+
 ## 4. Row Level Security
 
 RLS is **enabled on every table**. Single-organization model: any authenticated

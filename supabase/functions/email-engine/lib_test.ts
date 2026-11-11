@@ -1,5 +1,5 @@
 // deno test supabase/functions/email-engine/lib_test.ts
-import { fromFor, safeEqual, verifySvix, withFooter } from "./lib.ts";
+import { forwardText, fromFor, htmlToText, replyAddress, safeEqual, verifySvix, withFooter } from "./lib.ts";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -41,6 +41,22 @@ Deno.test("withFooter: personal opt-out line with the link, at the end", () => {
   assert(out.startsWith(`Hello Ada,\n\nThanks.\n\nIf this isn't relevant, just reply "no thanks"`), "body kept, trailing space trimmed");
   assert(!out.includes("\n--\n"), "no signature divider");
   assert(out.endsWith("https://crm.example.com/unsubscribe?t=tok-123"), "link at the end");
+});
+
+Deno.test("replyAddress: capture address when a reply domain is set, else the approver", () => {
+  assert(replyAddress("contact.sportconn.com", "tok-1", "jude@x.com") === "reply+tok-1@contact.sportconn.com", "capture address");
+  assert(replyAddress("", "tok-1", "jude@x.com") === "jude@x.com", "fallback to approver");
+  assert(replyAddress("", "tok-1", null) === undefined, "no reply-to at all");
+});
+
+Deno.test("htmlToText: tags, breaks, entities, scripts", () => {
+  const t = htmlToText("<div>Hi Jude,<br>Thursday works.</div><p>Ada &amp; team</p><script>x()</script>");
+  assert(t === "Hi Jude,\nThursday works.\nAda & team", `got: ${JSON.stringify(t)}`);
+});
+
+Deno.test("forwardText: says who replied, links the lead, includes the text", () => {
+  const t = forwardText({ from: "Ada <ada@kuda.com>", company: "Kuda", text: "Yes please", leadUrl: "https://crm/leads?focus=1" });
+  assert(t.startsWith("Ada <ada@kuda.com> (Kuda) replied") && t.includes("https://crm/leads?focus=1") && t.endsWith("Yes please"), t);
 });
 
 Deno.test("safeEqual", () => {

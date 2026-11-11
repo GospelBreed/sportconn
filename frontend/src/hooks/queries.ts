@@ -10,6 +10,7 @@ import type {
   Captain,
   DealApproval,
   EmailMessage,
+  EmailReply,
   EmailSettings,
   Facility,
   Lead,
@@ -564,6 +565,31 @@ export function useEmailsSentSince(sinceIso: string) {
     queryKey: ["emails-sent-since", sinceIso],
     queryFn: () => db.countEmailsSentSince(sinceIso),
     refetchInterval: 60_000,
+  });
+}
+
+// ======================= REPLIES + ENGINE DASHBOARD (0008) =======================
+export function useReplies(filter: "unhandled" | "handled" | "unmatched") {
+  return useQuery({ queryKey: ["email-replies", filter], queryFn: () => db.listReplies(filter) });
+}
+
+export function useUnhandledReplyCount() {
+  return useQuery({ queryKey: ["email-replies", "count"], queryFn: db.countUnhandledReplies, refetchInterval: 60_000 });
+}
+
+export function useUpdateReply() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<EmailReply> }) => db.updateReply(id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["email-replies"] }),
+  });
+}
+
+export function useEngineDashboard(from?: string, to?: string) {
+  return useQuery({
+    queryKey: ["engine-dashboard", from ?? null, to ?? null],
+    queryFn: () => db.getEngineDashboard(from, to),
+    refetchInterval: 5 * 60_000,
   });
 }
 

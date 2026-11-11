@@ -10,7 +10,9 @@ import type {
   DashboardSummary,
   DealApproval,
   EmailMessage,
+  EmailReply,
   EmailSettings,
+  EngineDashboard,
   EngineRun,
   Facility,
   FacilityDetail,
@@ -761,6 +763,41 @@ export async function countEmailsSentSince(sinceIso: string): Promise<number> {
     .gte("occurred_at", sinceIso);
   if (error) throw new Error(error.message);
   return count ?? 0;
+}
+
+// ---- replies + engine dashboard (0008) ----
+const REPLY_SELECT =
+  "*, leads:lead_id(id,full_name,company_name), email:email_message_id(id,subject,sequence_step), handler:handled_by(id,full_name)";
+
+export function listReplies(filter: "unhandled" | "handled" | "unmatched", limit = 200): Promise<EmailReply[]> {
+  let q = supabase.from("email_replies").select(REPLY_SELECT).order("received_at", { ascending: false }).limit(limit);
+  if (filter === "unhandled") q = q.eq("handled", false).not("lead_id", "is", null);
+  else if (filter === "handled") q = q.eq("handled", true);
+  else q = q.is("lead_id", null);
+  return run<EmailReply[]>(q).then((r) => r ?? []);
+}
+
+export async function countUnhandledReplies(): Promise<number> {
+  const { count, error } = await supabase
+    .from("email_replies")
+    .select("id", { count: "exact", head: true })
+    .eq("handled", false)
+    .not("lead_id", "is", null);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export function updateReply(id: string, body: Partial<EmailReply>): Promise<EmailReply> {
+  return run<EmailReply[]>(supabase.from("email_replies").update(body).eq("id", id).select(REPLY_SELECT)).then((r) => {
+    if (!r?.[0]) throw new Error("You don't have permission to change this reply.");
+    return r[0];
+  });
+}
+
+export async function getEngineDashboard(from?: string, to?: string): Promise<EngineDashboard> {
+  const { data, error } = await supabase.rpc("get_engine_dashboard", { p_from: from ?? null, p_to: to ?? null });
+  if (error) throw new Error(error.message);
+  return data as EngineDashboard;
 }
 
 /** Public unsubscribe (no login): confirms a token from an email's footer link. */

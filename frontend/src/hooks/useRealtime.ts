@@ -13,7 +13,8 @@ type Table =
   | "campaigns"
   | "deal_approvals"
   | "sponsor_deliverables"
-  | "email_messages";
+  | "email_messages"
+  | "email_replies";
 
 /**
  * Subscribe to Postgres changes on a `sportconn` table and invalidate the

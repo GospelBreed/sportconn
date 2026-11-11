@@ -141,6 +141,10 @@ React SPA (Netlify)  ──supabase-js (anon key + user JWT)──▶  Supabase 
       human review → sending queue, sending settings (daily budget, per-company
       limit, days/hours), Resend delivery events, unsubscribe tokens. Then set up
       the `email-engine` function (§ Email queue below).
+   8. [`supabase/migrations/0008_engine_replies_followups.sql`](./supabase/migrations/0008_engine_replies_followups.sql)
+      — reply capture (`email_replies`), follow-up chains (max 2, stop on
+      reply), reply classification, `get_engine_dashboard()`; per-company
+      limit no longer applies to free-mail domains.
 3. *(Optional)* Run [`supabase/seed.sql`](./supabase/seed.sql) for fictional
    demo data (facilities, captains, campaigns, leads across every pipeline,
    outreach, tasks). Re-running is safe for the core rows; it will add
@@ -213,6 +217,7 @@ supabase/
   functions/engine-api/          Edge Function — REST API for the AI acquisition engine (n8n)
   functions/email-engine/        Edge Function — queue sender, Resend webhooks, unsubscribe
   migrations/0007_email_engine.sql  eligibility, drafts/review/queue, sending settings, events
+  migrations/0008_engine_replies_followups.sql  replies, follow-ups, classification, engine dashboard
   migrations/0006_acquisition_engine.sql  100-pt score, dedupe, research, suppression, engine runs
   seed.sql                       optional fictional demo data
 frontend/
@@ -287,6 +292,11 @@ Then: in Resend → Webhooks, point `email.*` events at
 `https://<ref>.supabase.co/functions/v1/email-engine/webhooks/resend` (its signing
 secret is `RESEND_WEBHOOK_SECRET`); and schedule `POST …/email-engine/run`
 (Bearer `ENGINE_API_KEY`) every 15 minutes from n8n or Supabase Cron.
+
+Reply capture (optional but recommended): switch on **receiving** for the sending
+domain in Resend (it gives an MX record to add at your DNS host), add
+`email.received` to the webhook, give `RESEND_API_KEY` Full access, and set
+`npx supabase secrets set --project-ref <ref> REPLY_DOMAIN=<that domain>`.
 
 ### Frontend → Netlify
 [`frontend/netlify.toml`](./frontend/netlify.toml) is preconfigured (`base =
