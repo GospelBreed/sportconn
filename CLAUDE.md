@@ -71,6 +71,12 @@ and all UI primitives.
     `get_pipeline_metrics()`, or client-side aggregation over fetched lists).
     Never hardcode a KPI value. Seed data is clearly fictional (see
     `supabase/seed.sql` header) and must stay that way.
+14. **Functions are never callable with the public (anon) key.** Postgres lets
+    PUBLIC execute every new function, and the anon key ships in the browser.
+    Any migration that creates or replaces a function ends with
+    `revoke execute on function … from public, anon;` plus the right `grant`
+    (`authenticated` for staff-facing RPCs, `service_role` only for engine /
+    sender functions). 0009 locked down everything up to that point.
 
 ## Roles
 `super_admin` · `admin` · `management` · `business_development` · `sales` ·
