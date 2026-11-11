@@ -275,6 +275,7 @@ with the caller's own session (RLS applies; viewers can't send).
 ### AI engine → `engine-api` Edge Function
 The n8n workflows of the AI Partnership Acquisition Engine talk to the CRM only
 through this function. Routes, payloads and error codes: [docs/ENGINE_API.md](./docs/ENGINE_API.md).
+Claude prompts, response formats and n8n wiring for each workflow: [docs/ENGINE_PROMPTS.md](./docs/ENGINE_PROMPTS.md) (Code nodes in `n8n/claude/`).
 ```bash
 npx supabase secrets set --project-ref <ref> ENGINE_API_KEY=<long random string>
 npx supabase functions deploy engine-api --project-ref <ref> --no-verify-jwt --use-api
