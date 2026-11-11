@@ -257,7 +257,7 @@ Mark items `[x]` as completed. Keep this file honest.
 ## Security fix — 0009
 - [x] Found 2026-11-11: reporting / eligibility RPCs (incl. pre-existing get_dashboard_summary, get_pipeline_metrics) were executable with the anon key
 - [x] `0009_lock_down_functions.sql`: revoke EXECUTE from public/anon on every sportconn function; staff + server keep access; engine/sender stay server-only; tested (anon blocked, staff + earlier suites pass)
-- [ ] Apply 0009 in production
+- [x] Applied in production 2026-11-11; anon key verified refused on every RPC
 
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)
