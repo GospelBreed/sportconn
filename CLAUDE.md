@@ -135,6 +135,10 @@ supabase/
                              lead_research, suppressions, engine_runs, engine_* RPCs
   functions/engine-api/      Edge Function — REST API for the AI acquisition engine
                              (bearer ENGINE_API_KEY; see docs/ENGINE_API.md)
+  migrations/0007_email_engine.sql  contact eligibility, email drafts → review →
+                             queue, sending settings, Resend events, unsubscribe
+  functions/email-engine/    Edge Function — queue sender (/run), Resend webhooks,
+                             unsubscribe; pure helpers in lib.ts (deno test lib_test.ts)
   functions/send-email/      Edge Function — lead emails via Resend (runs as the
                              caller; logs outbound outreach)
   functions/mcp-server/      Edge Function — the CRM as a Claude connector

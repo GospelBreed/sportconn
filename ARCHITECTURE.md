@@ -383,6 +383,42 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
 - **Paging:** `listLeads()` fetches in 1,000-row chunks (PostgREST's cap); the
   Leads table pages server-side (`listLeadsPage`, 50 per page, exact count).
 
+### 3.17 Controlled outreach — migration `0007_email_engine.sql` + `email-engine`
+
+- **`contact_eligibility`** (PK email): source type/URL, lawful basis,
+  verification, optional management override (`can_approve()` only, reason
+  required). `email_eligibility(email)` → eligible / pending_review /
+  ineligible + reason; suppressed or invalid can never be overridden to
+  eligible. `lead_email_eligibility(lead)` lists every address on a lead.
+- **`email_messages`**: `draft → approved → sending → sent → delivered |
+  bounced | complained | failed`, plus `rejected` / `cancelled`. The
+  `email_messages_guard` trigger (security invoker; "system" = any role other
+  than `authenticated`/`anon`) limits staff to review moves (draft↔approved,
+  rejected, cancelled, retry failed), edits to drafts only, no provider fields.
+  Approving runs `email_send_blocker()` (lead open, not opted out, address on
+  the lead, contact eligible, no placeholders). One live message per address
+  (partial unique index).
+- **`email_settings`** (one row, `can_approve()` to edit): daily budget
+  (default 15), per-domain daily limit (2), send days/hours (Lagos), minimum
+  days between emails to one address (14), `require_review` (auto-approval
+  only with a `default_sender_id`), pause.
+- **Sender**: `email_claim_batch(max)` reclaims stuck `sending` rows (>15 min),
+  checks pause/window/budget (budget counts every Resend send today incl.
+  one-to-one), re-checks each message's blocker (cancels if now blocked), applies
+  the per-domain limit and claims with `FOR UPDATE SKIP LOCKED`.
+  `email_mark_sent` writes the outbound `outreach` row (timeline, scorecard);
+  `email_mark_failed` retries ≤ 3 attempts. Resend Idempotency-Key =
+  `queue-<message id>`.
+- **Events**: `email_apply_event` (idempotent on Svix id) updates messages and
+  outreach; permanent bounces and complaints insert suppressions (also for
+  one-to-one sends). Webhook auth = Svix HMAC (`email-engine/lib.ts`, tested
+  against Svix's published vector).
+- **Unsubscribe**: per-message `unsubscribe_token`; footer link → public
+  `/unsubscribe` page in the app (confirm button); `List-Unsubscribe` +
+  `List-Unsubscribe-Post` one-click → POST. GET never unsubscribes.
+- All writers (`engine_set_eligibility`, `engine_create_draft`, `email_claim_batch`,
+  `email_mark_*`, `email_apply_event`, `email_unsubscribe`) are service-role only.
+
 ## 4. Row Level Security
 
 RLS is **enabled on every table**. Single-organization model: any authenticated

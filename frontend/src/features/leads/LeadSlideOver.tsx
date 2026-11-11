@@ -13,6 +13,7 @@ import { InlineEdit } from "@/components/ui/InlineEdit";
 import { LeadContacts } from "./LeadContacts";
 import { EmailComposeModal } from "./EmailComposeModal";
 import { LeadResearchTab } from "./LeadResearchTab";
+import { LeadEligibility } from "./LeadEligibility";
 import { SponsorDealTab } from "@/features/sponsors/SponsorDealTab";
 import { SponsorDeliveryTab } from "@/features/sponsors/SponsorDeliveryTab";
 import {
@@ -344,6 +345,7 @@ function Overview({ lead }: { lead: LeadDetail }) {
       </div>
 
       <LeadContacts lead={lead} />
+      <LeadEligibility lead={lead} />
 
       <div className="card-base space-y-3 p-4">
         <Field label="Next action" hint="Every open lead needs an owner, a next action and a date. A lead with no next action is a forgotten lead.">

@@ -5,8 +5,13 @@ import type {
   CampaignChannel,
   CampaignStatus,
   CampaignType,
+  ContactSourceType,
   ContractStatus,
   DeliverableStatus,
+  EligibilityStatus,
+  EmailMessageStatus,
+  LawfulBasis,
+  VerificationStatus,
   FacilityType,
   PaymentStatus,
   RenewalStatus,
@@ -117,6 +122,57 @@ export const SUPPRESSION_REASON_LABEL: Record<SuppressionReason, string> = {
   manual: "Added manually",
   other: "Other",
 };
+
+// ---------- Controlled outreach (0007) ----------
+export const SOURCE_TYPES: ContactSourceType[] = [
+  "company_website", "linkedin", "data_provider", "referral", "event", "inbound", "existing_relationship", "other",
+];
+export const SOURCE_TYPE_LABEL: Record<ContactSourceType, string> = {
+  company_website: "Company website",
+  linkedin: "LinkedIn",
+  data_provider: "B2B data provider",
+  referral: "Referral / introduction",
+  event: "Met at an event",
+  inbound: "They contacted us",
+  existing_relationship: "Existing relationship",
+  other: "Other",
+};
+export const LAWFUL_BASES: LawfulBasis[] = ["legitimate_interest", "consent", "existing_relationship", "none_recorded"];
+export const LAWFUL_BASIS_LABEL: Record<LawfulBasis, string> = {
+  legitimate_interest: "Legitimate interest (relevant B2B offer)",
+  consent: "Consent given",
+  existing_relationship: "Existing business relationship",
+  none_recorded: "Not recorded",
+};
+export const VERIFICATION_STATUSES: VerificationStatus[] = ["valid", "risky", "invalid", "unknown", "unverified"];
+export const VERIFICATION_LABEL: Record<VerificationStatus, string> = {
+  valid: "Verified — valid",
+  risky: "Risky (catch-all / role)",
+  invalid: "Invalid",
+  unknown: "Couldn't verify",
+  unverified: "Not checked",
+};
+export const ELIGIBILITY_META: Record<EligibilityStatus, { label: string; cls: string }> = {
+  eligible: { label: "Can be emailed", cls: "bg-success/12 text-success" },
+  pending_review: { label: "Needs review", cls: "bg-warning/14 text-warning" },
+  ineligible: { label: "Don't email", cls: "bg-danger/12 text-danger" },
+};
+export const EMAIL_STATUS_META: Record<EmailMessageStatus, { label: string; cls: string }> = {
+  draft: { label: "To review", cls: "bg-warning/14 text-warning" },
+  approved: { label: "Queued", cls: "bg-info/12 text-info" },
+  sending: { label: "Sending", cls: "bg-info/12 text-info" },
+  sent: { label: "Sent", cls: "bg-success/12 text-success" },
+  delivered: { label: "Delivered", cls: "bg-success/12 text-success" },
+  bounced: { label: "Bounced", cls: "bg-danger/12 text-danger" },
+  complained: { label: "Marked as spam", cls: "bg-danger/12 text-danger" },
+  failed: { label: "Failed", cls: "bg-danger/12 text-danger" },
+  rejected: { label: "Rejected", cls: "bg-line text-muted" },
+  cancelled: { label: "Cancelled", cls: "bg-line text-muted" },
+};
+export const WEEKDAYS: { iso: number; label: string }[] = [
+  { iso: 1, label: "Mon" }, { iso: 2, label: "Tue" }, { iso: 3, label: "Wed" }, { iso: 4, label: "Thu" },
+  { iso: 5, label: "Fri" }, { iso: 6, label: "Sat" }, { iso: 7, label: "Sun" },
+];
 
 // ---------- Sponsor execution (0004) ----------
 
@@ -420,6 +476,7 @@ export const NAV_KEYS = [
   "leads",
   "pipeline",
   "sponsors",
+  "email_queue",
   "investors",
   "facilities",
   "partners",
@@ -436,6 +493,7 @@ export const NAV_LABELS: Record<string, string> = {
   leads: "Leads",
   pipeline: "Pipeline",
   sponsors: "Sponsors",
+  email_queue: "Email review",
   investors: "Investors",
   facilities: "Facilities",
   partners: "Partners",

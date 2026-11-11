@@ -9,12 +9,15 @@ import type {
   CaptainDetail,
   DashboardSummary,
   DealApproval,
+  EmailMessage,
+  EmailSettings,
   EngineRun,
   Facility,
   FacilityDetail,
   Lead,
   LeadContact,
   LeadDetail,
+  LeadEmailEligibility,
   LeadResearch,
   Outreach,
   PipelineDef,
@@ -664,6 +667,113 @@ export async function countEngineLeadsSince(sinceIso: string): Promise<number> {
     .gte("created_at", sinceIso);
   if (error) throw new Error(error.message);
   return count ?? 0;
+}
+
+// ===========================================================================
+// CONTROLLED OUTREACH (0007) — eligibility, drafts/review/queue, settings
+// ===========================================================================
+export async function listLeadEligibility(leadId: string): Promise<LeadEmailEligibility[]> {
+  const { data, error } = await supabase.rpc("lead_email_eligibility", { p_lead: leadId });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LeadEmailEligibility[];
+}
+
+export interface EligibilityInput {
+  email: string;
+  lead_id: string;
+  source_type: string | null;
+  source_url: string | null;
+  lawful_basis: string;
+  basis_note: string | null;
+  verification_status: string;
+  override?: "eligible" | "ineligible" | null;
+  override_reason?: string | null;
+}
+
+/** Insert or update the evidence for one address (override only when the caller may set it). */
+export async function saveEligibility(input: EligibilityInput, includeOverride: boolean): Promise<void> {
+  const row: Record<string, unknown> = {
+    email: input.email,
+    lead_id: input.lead_id,
+    source_type: input.source_type,
+    source_url: input.source_url,
+    lawful_basis: input.lawful_basis,
+    basis_note: input.basis_note,
+    verification_status: input.verification_status,
+    verified_at: input.verification_status === "unverified" ? null : new Date().toISOString(),
+    verification_provider: "manual",
+  };
+  if (includeOverride) {
+    row.override = input.override ?? null;
+    row.override_reason = input.override ? input.override_reason : null;
+  }
+  const { error } = await supabase.from("contact_eligibility").upsert(row, { onConflict: "email" });
+  if (error) throw new Error(error.message);
+}
+
+const EMAIL_SELECT = "*, leads:lead_id(id,full_name,company_name,prospect_score,status), reviewer:reviewed_by(id,full_name)";
+
+export function listEmailMessages(statuses: string[], limit = 200): Promise<EmailMessage[]> {
+  return run<EmailMessage[]>(
+    supabase
+      .from("email_messages")
+      .select(EMAIL_SELECT)
+      .in("status", statuses)
+      .order("updated_at", { ascending: false })
+      .limit(limit),
+  ).then((r) => r ?? []);
+}
+
+export async function countEmailMessages(statuses: string[]): Promise<number> {
+  const { count, error } = await supabase
+    .from("email_messages")
+    .select("id", { count: "exact", head: true })
+    .in("status", statuses);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export function updateEmailMessage(id: string, body: Partial<EmailMessage>): Promise<EmailMessage> {
+  return run<EmailMessage[]>(supabase.from("email_messages").update(body).eq("id", id).select(EMAIL_SELECT)).then((r) => {
+    if (!r?.[0]) throw new Error("You don't have permission to change this email.");
+    return r[0];
+  });
+}
+
+export function getEmailSettings(): Promise<EmailSettings> {
+  return run<EmailSettings>(supabase.from("email_settings").select("*").limit(1).single());
+}
+
+export async function updateEmailSettings(body: Partial<EmailSettings>): Promise<void> {
+  const { data, error } = await supabase.from("email_settings").update(body).eq("id", true).select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Only management or admins can change sending settings.");
+}
+
+/** Emails sent through Resend since the start of today in Lagos (queue + one-to-one). */
+export async function countEmailsSentSince(sinceIso: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("outreach")
+    .select("id", { count: "exact", head: true })
+    .eq("channel", "email")
+    .eq("direction", "outbound")
+    .not("external_id", "is", null)
+    .gte("occurred_at", sinceIso);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+/** Public unsubscribe (no login): confirms a token from an email's footer link. */
+export async function unsubscribeToken(token: string): Promise<{ email: string; already: boolean }> {
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/email-engine/unsubscribe`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_ANON_KEY },
+    body: JSON.stringify({ token }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.message || "We couldn't process this unsubscribe link.");
+  return { email: body.email, already: !!body.already };
 }
 
 // ===========================================================================

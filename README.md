@@ -136,6 +136,11 @@ React SPA (Netlify)  ──supabase-js (anon key + user JWT)──▶  Supabase 
       `engine_*` functions behind the `engine-api` function
       ([docs/ENGINE_API.md](./docs/ENGINE_API.md)). Apply before deploying a
       frontend that includes it.
+   7. [`supabase/migrations/0007_email_engine.sql`](./supabase/migrations/0007_email_engine.sql)
+      — controlled outreach: contact eligibility evidence, email drafts →
+      human review → sending queue, sending settings (daily budget, per-company
+      limit, days/hours), Resend delivery events, unsubscribe tokens. Then set up
+      the `email-engine` function (§ Email queue below).
 3. *(Optional)* Run [`supabase/seed.sql`](./supabase/seed.sql) for fictional
    demo data (facilities, captains, campaigns, leads across every pipeline,
    outreach, tasks). Re-running is safe for the core rows; it will add
@@ -206,6 +211,8 @@ supabase/
   functions/mcp-server/          Edge Function — the CRM as a Claude connector
   functions/send-email/          Edge Function — send lead emails via Resend
   functions/engine-api/          Edge Function — REST API for the AI acquisition engine (n8n)
+  functions/email-engine/        Edge Function — queue sender, Resend webhooks, unsubscribe
+  migrations/0007_email_engine.sql  eligibility, drafts/review/queue, sending settings, events
   migrations/0006_acquisition_engine.sql  100-pt score, dedupe, research, suppression, engine runs
   seed.sql                       optional fictional demo data
 frontend/
@@ -268,6 +275,18 @@ npx supabase secrets set --project-ref <ref> ENGINE_API_KEY=<long random string>
 npx supabase functions deploy engine-api --project-ref <ref> --no-verify-jwt --use-api
 ```
 Optional secrets: `ENGINE_MIN_SCORE` (default 65), `ENGINE_DAILY_TARGET` (default 80).
+
+### Email queue → `email-engine` Edge Function
+Sends approved emails from **Email review** in batches, receives Resend
+delivery events, and handles unsubscribes. Details: [docs/ENGINE_API.md](./docs/ENGINE_API.md#sending-email-engine-function).
+```bash
+npx supabase secrets set --project-ref <ref> APP_URL=https://<crm address> RESEND_WEBHOOK_SECRET=whsec_...
+npx supabase functions deploy email-engine --project-ref <ref> --no-verify-jwt --use-api
+```
+Then: in Resend → Webhooks, point `email.*` events at
+`https://<ref>.supabase.co/functions/v1/email-engine/webhooks/resend` (its signing
+secret is `RESEND_WEBHOOK_SECRET`); and schedule `POST …/email-engine/run`
+(Bearer `ENGINE_API_KEY`) every 15 minutes from n8n or Supabase Cron.
 
 ### Frontend → Netlify
 [`frontend/netlify.toml`](./frontend/netlify.toml) is preconfigured (`base =

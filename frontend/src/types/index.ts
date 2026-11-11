@@ -17,6 +17,7 @@ export type NavKey =
   | "leads"
   | "pipeline"
   | "sponsors"
+  | "email_queue"
   | "investors"
   | "facilities"
   | "partners"
@@ -412,6 +413,93 @@ export interface Suppression {
   lead_id?: string | null;
   created_at: string;
   author?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+// ===================== Controlled outreach (0007) =====================
+
+export type ContactSourceType =
+  | "company_website"
+  | "linkedin"
+  | "data_provider"
+  | "referral"
+  | "event"
+  | "inbound"
+  | "existing_relationship"
+  | "other";
+export type LawfulBasis = "consent" | "legitimate_interest" | "existing_relationship" | "none_recorded";
+export type VerificationStatus = "unverified" | "valid" | "risky" | "invalid" | "unknown";
+export type EligibilityStatus = "eligible" | "pending_review" | "ineligible";
+
+/** One address on a lead with its eligibility (rpc lead_email_eligibility). */
+export interface LeadEmailEligibility {
+  email: string;
+  contact_name?: string | null;
+  status: EligibilityStatus;
+  reason: string;
+  source_type?: ContactSourceType | null;
+  source_url?: string | null;
+  lawful_basis?: LawfulBasis | null;
+  basis_note?: string | null;
+  verification_status?: VerificationStatus | null;
+  verification_provider?: string | null;
+  verified_at?: string | null;
+  override?: "eligible" | "ineligible" | null;
+  override_reason?: string | null;
+}
+
+export type EmailMessageStatus =
+  | "draft"
+  | "approved"
+  | "sending"
+  | "sent"
+  | "delivered"
+  | "bounced"
+  | "complained"
+  | "failed"
+  | "rejected"
+  | "cancelled";
+
+export interface EmailMessage {
+  id: string;
+  lead_id: string;
+  to_email: string;
+  to_name?: string | null;
+  subject: string;
+  body: string;
+  origin: "ai_engine" | "staff";
+  status: EmailMessageStatus;
+  partnership_concept?: string | null;
+  personalization_evidence: unknown[];
+  facts_to_verify: unknown[];
+  confidence?: number | null;
+  sequence_step: number;
+  review_note?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  approved_at?: string | null;
+  attempts: number;
+  sent_at?: string | null;
+  delivered_at?: string | null;
+  bounced_at?: string | null;
+  complained_at?: string | null;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+  leads?: Pick<Lead, "id" | "full_name" | "company_name" | "prospect_score" | "status"> | null;
+  reviewer?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+export interface EmailSettings {
+  daily_send_limit: number;
+  per_domain_daily_limit: number;
+  send_days: number[];
+  send_hour_start: number;
+  send_hour_end: number;
+  min_days_between_emails: number;
+  require_review: boolean;
+  default_sender_id?: string | null;
+  sending_paused: boolean;
+  updated_at: string;
 }
 
 export interface EngineRun {

@@ -18,6 +18,8 @@ import { TasksPage } from "@/pages/TasksPage";
 import { CampaignsPage } from "@/pages/CampaignsPage";
 import { AnalyticsPage } from "@/pages/AnalyticsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { EmailQueuePage } from "@/pages/EmailQueuePage";
+import { UnsubscribePage } from "@/pages/UnsubscribePage";
 
 function FullScreenLoader() {
   return (
@@ -62,6 +64,7 @@ export function App() {
         <Route path="/leads" element={<LeadsPage />} />
         <Route path="/pipeline" element={<PipelinePage />} />
         <Route path="/sponsors" element={<SponsorsPage />} />
+        <Route path="/email-review" element={<EmailQueuePage />} />
         <Route path="/investors" element={<InvestorsPage />} />
         <Route path="/partners" element={<PartnersPage />} />
         <Route path="/user-acquisition" element={<UserAcquisitionPage />} />
@@ -75,6 +78,8 @@ export function App() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/followups" element={<Navigate to="/tasks" replace />} />
       </Route>
+      {/* public: the unsubscribe link in queue emails (no login) */}
+      <Route path="/unsubscribe" element={<UnsubscribePage />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

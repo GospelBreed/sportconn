@@ -35,6 +35,7 @@ const SECTIONS: NavSection[] = [
     label: "Business Development",
     items: [
       { to: "/sponsors", label: "Sponsors", icon: "dollar", key: "sponsors" },
+      { to: "/email-review", label: "Email review", icon: "mail", key: "email_queue" },
       { to: "/investors", label: "Investors", icon: "building", key: "investors" },
       { to: "/facilities", label: "Facilities", icon: "properties", key: "facilities" },
       { to: "/partners", label: "Partners", icon: "flag", key: "partners" },

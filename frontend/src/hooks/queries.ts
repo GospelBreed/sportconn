@@ -9,6 +9,8 @@ import type {
   Campaign,
   Captain,
   DealApproval,
+  EmailMessage,
+  EmailSettings,
   Facility,
   Lead,
   LeadContact,
@@ -106,6 +108,7 @@ export function useUpdateLead() {
       qc.invalidateQueries({ queryKey: ["dashboard-summary"] });
       qc.invalidateQueries({ queryKey: ["pipeline-metrics"] });
       qc.invalidateQueries({ queryKey: ["sponsor-scorecard"] });
+      qc.invalidateQueries({ queryKey: ["lead-eligibility", v.id] });
     },
   });
 }
@@ -402,6 +405,7 @@ export function usePendingApprovals() {
 /** Invalidate everything a sponsor-execution write can change on a lead. */
 function invalidateLeadExecution(qc: ReturnType<typeof useQueryClient>, leadId?: string | null) {
   if (leadId) qc.invalidateQueries({ queryKey: ["lead", leadId] });
+  if (leadId) qc.invalidateQueries({ queryKey: ["lead-eligibility", leadId] });
   qc.invalidateQueries({ queryKey: ["approvals"] });
   qc.invalidateQueries({ queryKey: ["sponsor-scorecard"] });
 }
@@ -492,6 +496,73 @@ export function useEngineLeadsSince(sinceIso: string) {
   return useQuery({
     queryKey: ["engine-leads-since", sinceIso],
     queryFn: () => db.countEngineLeadsSince(sinceIso),
+    refetchInterval: 60_000,
+  });
+}
+
+// ======================= CONTROLLED OUTREACH (0007) =======================
+export function useLeadEligibility(leadId: string | null) {
+  return useQuery({
+    queryKey: ["lead-eligibility", leadId],
+    queryFn: () => db.listLeadEligibility(leadId as string),
+    enabled: !!leadId,
+  });
+}
+
+export function useSaveEligibility() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ input, includeOverride }: { input: db.EligibilityInput; includeOverride: boolean }) =>
+      db.saveEligibility(input, includeOverride),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["lead-eligibility", v.input.lead_id] });
+      qc.invalidateQueries({ queryKey: ["email-messages"] });
+    },
+  });
+}
+
+export function useEmailMessages(statuses: string[]) {
+  return useQuery({
+    queryKey: ["email-messages", statuses],
+    queryFn: () => db.listEmailMessages(statuses),
+  });
+}
+
+export function useEmailCount(statuses: string[]) {
+  return useQuery({
+    queryKey: ["email-messages", "count", statuses],
+    queryFn: () => db.countEmailMessages(statuses),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useUpdateEmailMessage() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Partial<EmailMessage> }) => db.updateEmailMessage(id, body),
+    onSuccess: (m) => {
+      qc.invalidateQueries({ queryKey: ["email-messages"] });
+      if (m?.lead_id) qc.invalidateQueries({ queryKey: ["lead", m.lead_id] });
+    },
+  });
+}
+
+export function useEmailSettings() {
+  return useQuery({ queryKey: ["email-settings"], queryFn: db.getEmailSettings });
+}
+
+export function useUpdateEmailSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<EmailSettings>) => db.updateEmailSettings(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["email-settings"] }),
+  });
+}
+
+export function useEmailsSentSince(sinceIso: string) {
+  return useQuery({
+    queryKey: ["emails-sent-since", sinceIso],
+    queryFn: () => db.countEmailsSentSince(sinceIso),
     refetchInterval: 60_000,
   });
 }

@@ -3,8 +3,9 @@
 // REST API for the AI Partnership Acquisition Engine (n8n + Claude). This is
 // the engine's ONLY way into the CRM: a fixed set of validated operations, no
 // raw table access, every write attributed to the "AI Partnership Engine"
-// user and recorded in audit_log. The engine can't send email, change deal
-// money fields, mark anything Won, or delete records.
+// user and recorded in audit_log. The engine can't send email directly (it
+// submits drafts; people approve them and the email-engine function sends),
+// change deal money fields, mark anything Won, or delete records.
 //
 // Auth: `Authorization: Bearer <ENGINE_API_KEY>` (a secret, not a user JWT —
 // deploy with --no-verify-jwt). See docs/ENGINE_API.md for every route.
@@ -325,6 +326,74 @@ async function stats(url: URL) {
 }
 
 // ---------------------------------------------------------------------------
+// Outreach (0007): eligibility evidence, drafts, status
+// ---------------------------------------------------------------------------
+
+async function setEligibility(body: Json) {
+  const actor = await getEngineUserId();
+  const { data, error } = await db.rpc("engine_set_eligibility", { p: body, p_actor: actor });
+  if (error) {
+    if (/valid email|web address/i.test(error.message)) return fail(400, "invalid_eligibility", error.message);
+    throw error;
+  }
+  const res = data as Json;
+  return json(res, res.ok === false ? 422 : 200);
+}
+
+async function getEligibility(url: URL) {
+  const email = url.searchParams.get("email")?.trim();
+  if (!email) return fail(400, "invalid_request", "Give email");
+  const { data, error } = await db.rpc("email_eligibility", { p_email: email });
+  if (error) throw error;
+  return json({ email: email.toLowerCase(), eligibility: data });
+}
+
+async function createDraft(body: Json) {
+  const actor = await getEngineUserId();
+  const { data, error } = await db.rpc("engine_create_draft", { p: body, p_actor: actor });
+  if (error) {
+    if (/duplicate key/i.test(error.message)) return fail(409, "already_queued", "A draft or queued email already exists for this address");
+    throw error;
+  }
+  const res = data as Json;
+  if (res.ok === false) {
+    const conflict = ["already_queued", "recently_contacted", "suppressed", "lead_closed"].includes(String(res.error));
+    return json(res, conflict ? 409 : 422);
+  }
+  return json(res, 201);
+}
+
+const EMAIL_STATUSES = new Set(["draft", "approved", "sending", "sent", "delivered", "bounced", "complained", "failed", "rejected", "cancelled"]);
+
+async function emailStatus(url: URL) {
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") ?? "200") || 200, 1), 1000);
+  let query = db
+    .from("email_messages")
+    .select("id,lead_id,to_email,origin,status,subject,sequence_step,approved_at,sent_at,delivered_at,bounced_at,complained_at,error,provider_id,updated_at")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  const since = url.searchParams.get("since");
+  if (since) {
+    if (Number.isNaN(Date.parse(since))) return fail(400, "invalid_since", "since must be an ISO date/time");
+    query = query.gte("updated_at", since);
+  }
+  const status = url.searchParams.get("status");
+  if (status) {
+    const list = status.split(",").map((s) => s.trim()).filter(Boolean);
+    if (!list.every((s) => EMAIL_STATUSES.has(s))) return fail(400, "invalid_status", `status must be among: ${[...EMAIL_STATUSES].join(", ")}`);
+    query = query.in("status", list);
+  }
+  const leadId = url.searchParams.get("lead_id");
+  if (leadId) {
+    if (!UUID_RE.test(leadId)) return fail(400, "invalid_id", "lead_id must be a uuid");
+    query = query.eq("lead_id", leadId);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return json({ results: data });
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
@@ -343,6 +412,8 @@ Deno.serve(async (req) => {
     if (m === "GET" && path === "/suppression") return await listSuppression(url);
     if (m === "GET" && path === "/runs/today") return json(await todaySummary());
     if (m === "GET" && path === "/stats") return await stats(url);
+    if (m === "GET" && path === "/contacts/eligibility") return await getEligibility(url);
+    if (m === "GET" && path === "/emails/status") return await emailStatus(url);
 
     if (m === "POST" || m === "PATCH") {
       const body = await readBody(req);
@@ -351,6 +422,8 @@ Deno.serve(async (req) => {
       if (m === "POST" && path === "/leads/upsert") return await upsertLead(body);
       if (m === "POST" && path === "/suppression") return await addSuppression(body);
       if (m === "POST" && path === "/runs") return await startRun(body);
+      if (m === "POST" && path === "/contacts/eligibility") return await setEligibility(body);
+      if (m === "POST" && (path === "/emails/draft" || path === "/emails/queue")) return await createDraft(body);
       if (m === "PATCH" && parts[0] === "leads" && parts.length === 2) return await patchLead(parts[1], body);
       if (m === "PATCH" && parts[0] === "runs" && parts.length === 2) return await finishRun(parts[1], body);
     }

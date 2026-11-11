@@ -11,6 +11,7 @@ import { AccessGovernance } from "@/features/settings/AccessGovernance";
 import { PipelineSettings } from "@/features/settings/PipelineSettings";
 import { SponsorSettings } from "@/features/settings/SponsorSettings";
 import { SuppressionSettings } from "@/features/settings/SuppressionSettings";
+import { EmailSendingSettings } from "@/features/settings/EmailSendingSettings";
 
 export function SettingsPage() {
   const { user, updateLocalUser } = useAuth();
@@ -85,6 +86,7 @@ export function SettingsPage() {
 
         <PipelineSettings />
         <SponsorSettings />
+        <EmailSendingSettings />
         <SuppressionSettings />
         <AccessGovernance />
       </div>

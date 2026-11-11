@@ -223,8 +223,20 @@ Mark items `[x]` as completed. Keep this file honest.
       `deno check` on all functions; `npm run build` green
 - [ ] Apply 0006, set `ENGINE_API_KEY`, deploy `engine-api`, redeploy `send-email` and `mcp-server`,
       then deploy the frontend
-- [ ] Group 2: contact eligibility/provenance, email drafts + review + sending queue, unsubscribe link,
-      delivery events (Resend webhooks)
+- [x] Deployed 2026-11-11
+
+## Phase 18 — AI Partnership Acquisition Engine, group 2 (controlled outreach)
+- [x] `0007_email_engine.sql`: contact_eligibility + `email_eligibility()`, email_messages (review state
+      machine, one live message per address), email_settings, email_events, unsubscribe tokens, sender /
+      webhook / unsubscribe / engine RPCs (service role only)
+- [x] `engine-api`: `POST/GET /contacts/eligibility`, `POST /emails/draft` (`/emails/queue`), `GET /emails/status`
+- [x] `email-engine` function: `/run` batch sender, `/webhooks/resend` (Svix-verified), `/unsubscribe`
+- [x] UI: Email review page (to review / queued / sent / problems), Email permissions card on leads,
+      Settings → Email sending, public /unsubscribe page
+- [x] Tested: 66 DB checks; Svix vector + helper unit tests (`deno test`); email-engine routes run locally;
+      `deno check`; `npm run build` green
+- [ ] Apply 0007, set APP_URL + RESEND_WEBHOOK_SECRET, deploy email-engine + engine-api, add the Resend
+      webhook, schedule `/run`, deploy the frontend
 - [ ] Group 3: reply capture, follow-up sequences, engine dashboard metrics
 
 ## Deferred (hooks only — do NOT build unless asked)

@@ -5,7 +5,7 @@ read and write the CRM. It is the engine's only way in: a fixed set of
 validated operations, every write attributed to the *AI Partnership Engine*
 user and recorded in the audit log.
 
-The engine **cannot** send email, change prices, contracts or payments, mark a
+The engine **cannot** send email directly (it submits drafts that people approve), change prices, contracts or payments, mark a
 deal Won or Lost, assign owners, or delete anything. People do those in the CRM.
 
 ## Base URL and authentication
@@ -195,6 +195,103 @@ Engine output for the window (default: last 30 days) plus the sponsor scorecard.
   "scorecard": { … } }
 ```
 
+### `POST /contacts/eligibility` — record where an address came from
+Do this for every contact before drafting an email to them. The CRM, not the
+engine, decides whether the address may be emailed.
+
+```json
+{ "email": "ada@kuda.com", "lead_id": "…",
+  "source_type": "company_website", "source_url": "https://kuda.com/team",
+  "lawful_basis": "legitimate_interest", "basis_note": "Published partnerships contact",
+  "verification": { "status": "valid", "provider": "zerobounce", "checked_at": "2026-11-11T09:00:00Z" } }
+```
+`source_type`: `company_website`, `linkedin`, `data_provider`, `referral`,
+`event`, `inbound`, `existing_relationship`, `other`.
+`lawful_basis`: `legitimate_interest`, `consent`, `existing_relationship`,
+`none_recorded`. `verification.status`: `valid`, `risky`, `invalid`,
+`unknown`, `unverified` — use a real verification service, never a guess.
+
+→ `{"ok":true,"email":"ada@kuda.com","eligibility":{"status":"eligible","reason":"Verified, source and lawful basis recorded"}}`
+
+Eligibility rules: on the do-not-contact list or failed verification →
+`ineligible`; no record, no lawful basis, no source, not verified, risky, or a
+personal address (gmail, yahoo…) → `pending_review`; otherwise `eligible`.
+Management can override in the CRM (never for unsubscribed or invalid
+addresses).
+
+### `GET /contacts/eligibility?email=…`
+`{"email":"…","eligibility":{"status":"…","reason":"…"}}`
+
+### `POST /emails/draft` (alias `POST /emails/queue`) — submit an email for review
+```json
+{ "lead_id": "…", "to": "ada@kuda.com", "run_id": "optional",
+  "subject": "Kuda fans and match-day predictions",
+  "body": "Hello Ada, …",
+  "partnership_concept": "Kuda-branded Predict & Win",
+  "personalization_evidence": ["Kuda is Sporting Lagos' shirt sponsor (source: …)"],
+  "facts_to_verify": ["Season dates"],
+  "confidence": 0.82 }
+```
+Plain text, no unsubscribe line (the CRM adds it), no `[placeholders]` or
+`{variables}`. If the copywriter returned `NEEDS_RESEARCH`, don't call this.
+
+→ `201 {"ok":true,"email_id":"…","status":"draft","blocker":null,"eligibility":{…}}`
+
+`status` is `draft` (waits in **Email review** for a person) — or `approved`
+only if review has been switched off in Settings and nothing blocks it.
+`blocker` says what would stop it being approved (e.g. contact not eligible).
+
+Refusals: `409` `already_queued` (a live draft exists for that address),
+`recently_contacted` (emailed within the minimum gap, default 14 days),
+`suppressed`, `lead_closed`; `422` `unfilled_placeholders`, `needs_research`,
+`address_not_on_lead`, `missing_content`, `too_long`, `invalid_confidence`,
+`lead_not_found`.
+
+### `GET /emails/status?since=ISO&status=sent,delivered&lead_id=…&limit=200`
+Latest state of queue emails: `draft`, `approved` (queued), `sending`, `sent`
+(accepted by Resend), `delivered`, `bounced`, `complained`, `failed`,
+`rejected`, `cancelled` — with timestamps and any error. A successful send is
+`sent`; only `delivered` means it reached the recipient's mail server.
+
+---
+
+## Sending (`email-engine` function)
+
+Base: `https://xvuifgbdcfhezbcevskl.supabase.co/functions/v1/email-engine`
+
+### `POST /run` — send the next batch
+Auth: the same `Authorization: Bearer <ENGINE_API_KEY>`. Body `{"max": 10}`
+(≤ 25). Call it on a schedule — an n8n **Schedule Trigger** every 15 minutes
+→ HTTP Request `POST …/email-engine/run` with the "SportConn Engine API"
+credential. It sends only **approved** emails, and only within the limits in
+**Settings → Email sending**: daily total, per company per day, sending days
+and hours (Lagos), and not while paused.
+
+```json
+{ "ok": true, "sent": 3, "failed": 0, "paused": false, "outside_window": false,
+  "budget_reached": false, "results": [ { "id": "…", "ok": true, "provider_id": "…" } ] }
+```
+
+Each email is plain text from "<approver's name> at SportConn", Reply-To the
+approver, with an unsubscribe line and one-click unsubscribe headers. Every
+send is logged on the lead's timeline. Temporary failures retry (up to 3
+attempts); permanent ones show under **Email review → Problems**.
+
+### `POST /webhooks/resend` — delivery events
+Set up once in Resend → **Webhooks**: endpoint
+`…/functions/v1/email-engine/webhooks/resend`, events `email.sent`,
+`email.delivered`, `email.delivery_delayed`, `email.bounced`,
+`email.complained`. Copy the signing secret into the `RESEND_WEBHOOK_SECRET`
+Supabase secret. Hard bounces and spam complaints are added to the
+do-not-contact list automatically (also for one-to-one emails sent from a
+lead).
+
+### Unsubscribe
+`GET /unsubscribe?t=…` redirects to the CRM's confirmation page
+(`APP_URL/unsubscribe`); `POST` (mail clients' one-click, or the page's button)
+adds the address to the do-not-contact list and cancels any pending drafts to
+it.
+
 ---
 
 ## Mapping to the blueprint's workflows
@@ -208,9 +305,12 @@ Engine output for the window (default: last 30 days) plus the sponsor scorecard.
 | Retrieve suppressed contacts | `GET /suppression` |
 | End of run, counts, shortfall | `PATCH /runs/{id}` |
 | Daily reporting | `GET /stats`, `GET /runs/today` |
+| C Check contact eligibility | `POST /contacts/eligibility` |
+| C Add to email queue | `POST /emails/draft` (people approve in **Email review**) |
+| D Email sending engine | schedule `POST email-engine/run` |
+| D Monitor delivery events / update CRM | Resend webhook → `email-engine/webhooks/resend`; read `GET /emails/status` |
 
-**Not available yet** (next build stages): email drafts and the sending queue
-(`POST /emails/queue`), delivery / reply status (`GET /emails/status`),
-contact verification and eligibility fields, unsubscribe links, reply capture
-and follow-up sequences. Don't build n8n steps that send email until those
-exist.
+**Not available yet** (next build stage): reply capture and reply
+classification, automatic follow-up sequences (stop on reply), and the
+engine performance dashboard. Until then, replies arrive in the approver's own
+inbox — log them on the lead by hand.
