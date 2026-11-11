@@ -21,6 +21,17 @@
 //   supabase functions deploy mcp-server --no-verify-jwt
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  businessDaysStart, EMAIL_RE, estimateSendTime, isGenericInbox, lagosMidnight, mapQueueError, type SendSettings,
+  stripQuoted, toLagosIso, UUID_RE,
+} from "./email.ts";
+
+// A refusal the caller should act on: returned as {"error": code, "message": …}.
+class ToolError extends Error {
+  constructor(public code: string, message: string, public extra: Record<string, unknown> = {}) {
+    super(message);
+  }
+}
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -73,6 +84,7 @@ const LEAD_UPDATE_FIELDS = [
   "fit_reason", "package_id", "expected_decision_date", "contract_status", "contract_value",
   "invoice_number", "payment_status", "payment_due_date", "amount_received", "vendor_registration",
   "renewal_status", "renewal_due_date", "campaign_start_date", "campaign_end_date",
+  "last_researched_at", "engine_run_id",
 ];
 
 // ---------------------------------------------------------------------------
@@ -335,7 +347,341 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "record_contact_source",
+    description:
+      "Record where an email address came from and its lawful basis, before queueing an email to it. The CRM (not the caller) then decides eligibility: only 'eligible' addresses are sent automatically; others wait in Email review. verification.status must come from a real email-verification service — use 'unverified' if none was run.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        email: { type: "string" },
+        lead_id: { type: "string" },
+        source_type: {
+          type: "string",
+          enum: ["company_website", "linkedin", "data_provider", "referral", "event", "inbound", "existing_relationship", "other"],
+        },
+        source_url: { type: "string", description: "http(s) page where the address was published" },
+        lawful_basis: { type: "string", enum: ["legitimate_interest", "consent", "existing_relationship", "none_recorded"] },
+        basis_note: { type: "string" },
+        verification: {
+          type: "object",
+          properties: {
+            status: { type: "string", enum: ["valid", "risky", "invalid", "unknown", "unverified"] },
+            provider: { type: "string" },
+            checked_at: { type: "string", description: "ISO datetime" },
+          },
+        },
+      },
+      required: ["email", "lead_id", "source_type"],
+    },
+  },
+  {
+    name: "queue_email",
+    description:
+      "Add one email for one lead to the CRM's Email review queue. The CRM sends it under its normal rules (sending days and hours, daily limit, per-company limit, do-not-email, eligibility) — it never bypasses the queue. sequence_step 1 = first email; 2 = follow-up, with reply_to_email_id = the sent step-1 email (it threads as a reply; follow-up spacing is set in Settings → Email sending, default 4 days). Returns status 'queued' (will send) or 'to_review' (waits for a person, with the reason in blocker), an estimated scheduled_for and position_in_queue. Refusals return an error code: do_not_email, recipient_mismatch, generic_inbox, duplicate, person_spacing, sequence_order, sequence_limit, replied, lead_closed, invalid_input.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        to_email: { type: "string", description: "Must be the lead's email or one of its contacts' emails" },
+        to_name: { type: "string" },
+        subject: { type: "string", description: "Max 150 characters" },
+        body_text: { type: "string", description: "Plain text, max 5,000 characters. No unsubscribe line (the CRM adds one), no [placeholders]." },
+        sequence_step: { type: "integer", enum: [1, 2] },
+        reply_to_email_id: { type: "string", description: "Required for step 2: the sent step-1 email_id" },
+        engine_run_id: { type: "string", description: "Optional engine run id (uuid) for reporting" },
+        partnership_concept: { type: "string" },
+      },
+      required: ["lead_id", "to_email", "subject", "body_text", "sequence_step"],
+    },
+  },
+  {
+    name: "list_email_events",
+    description:
+      "What the Email review tabs show, as data: replies (reply_text without quoted history), bounces (bounce_type hard/soft — hard bounces are already on the do-not-contact list), problems, sent, queued, to_review, rejected and cancelled emails, newest first. Every call also returns a summary: sent_today, daily_limit, queued, to_review, sent_last_5_business_days, bounces_last_5_business_days. Replies are never answered automatically.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        types: {
+          type: "array",
+          items: { type: "string", enum: ["reply", "bounce", "problem", "sent", "queued", "to_review", "rejected", "cancelled"] },
+          description: "Default: all",
+        },
+        since: { type: "string", description: "ISO datetime; only events after this" },
+        lead_id: { type: "string" },
+        limit: { type: "integer", minimum: 1, maximum: 200, default: 100 },
+        cursor: { type: "string", description: "next_cursor from the previous page" },
+      },
+    },
+  },
+  {
+    name: "set_email_opt_out",
+    description:
+      "Mark a lead and/or an address Do not email (for example after an unsubscribe or opt-out request). The address goes on the do-not-contact list and any queued email to it is cancelled. Only management or admins can allow emailing again, in the CRM.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lead_id: { type: "string" },
+        email: { type: "string" },
+        reason: { type: "string", enum: ["unsubscribed", "opt_out_request", "do_not_contact", "other"], default: "opt_out_request" },
+        note: { type: "string" },
+      },
+    },
+  },
+  {
+    name: "cancel_queued_email",
+    description: "Cancel an email that hasn't been sent yet (status to_review or queued), for example when a reply arrives before a follow-up goes out.",
+    inputSchema: {
+      type: "object",
+      properties: { email_id: { type: "string" }, reason: { type: "string" } },
+      required: ["email_id"],
+    },
+  },
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Email queue actions
+// ---------------------------------------------------------------------------
+const SPEC_STATUS: Record<string, string> = {
+  draft: "to_review", approved: "queued", sending: "queued", sent: "sent", delivered: "sent",
+  bounced: "bounced", complained: "complained", failed: "failed", rejected: "rejected", cancelled: "cancelled",
+};
+
+async function emailSettings(): Promise<SendSettings> {
+  const { data, error } = await db.from("email_settings").select("*").limit(1).single();
+  if (error) throw error;
+  return data as SendSettings;
+}
+async function countMessages(filter: (q: any) => any): Promise<number> {
+  const { count, error } = await filter(db.from("email_messages").select("id", { count: "exact", head: true }));
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function recordContactSource(a: Record<string, unknown>) {
+  const actor = await getConnectorUserId();
+  const { data, error } = await db.rpc("engine_set_eligibility", { p: a, p_actor: actor });
+  if (error) throw error;
+  if (!data?.ok) throw new ToolError(data?.error ?? "invalid_input", data?.message ?? "Couldn't record the source");
+  return data;
+}
+
+async function queueEmail(a: Record<string, unknown>) {
+  const str = (k: string) => (typeof a[k] === "string" ? (a[k] as string).trim() : "");
+  const lead_id = str("lead_id"), to = str("to_email").toLowerCase(), subject = str("subject"), body = str("body_text");
+  const step = Number(a.sequence_step);
+  const parentId = str("reply_to_email_id"), runId = str("engine_run_id");
+
+  if (a.send_after !== undefined) {
+    throw new ToolError("invalid_input", "send_after isn't supported: emails go out in the next open sending window. Leave it out.");
+  }
+  if (!UUID_RE.test(lead_id)) throw new ToolError("invalid_input", "lead_id must be a lead's id");
+  if (!EMAIL_RE.test(to)) throw new ToolError("invalid_input", "to_email must be an email address");
+  if (!subject || subject.length > 150) throw new ToolError("invalid_input", "subject is required, at most 150 characters");
+  if (!body || body.length > 5000) throw new ToolError("invalid_input", "body_text is required, at most 5,000 characters");
+  if (runId && !UUID_RE.test(runId)) throw new ToolError("invalid_input", "engine_run_id must be an engine run id (uuid)");
+  if (step === 1 && parentId) throw new ToolError("invalid_input", "A step-1 email has no reply_to_email_id");
+  if (step !== 1 && step !== 2) {
+    throw new ToolError(step > 2 ? "sequence_limit" : "invalid_input", "sequence_step is 1 (first email) or 2 (follow-up); there is no step 3");
+  }
+  if (step === 2 && !UUID_RE.test(parentId)) throw new ToolError("invalid_input", "A follow-up needs reply_to_email_id: the sent step-1 email");
+  if (isGenericInbox(to)) {
+    throw new ToolError("generic_inbox", "Generic inboxes (info@, hello@, admin@, contact@, support@) aren't emailed from the queue");
+  }
+
+  const { data: lead, error: le } = await db.from("leads").select("id,status").eq("id", lead_id).maybeSingle();
+  if (le) throw le;
+  if (!lead) throw new ToolError("invalid_input", "No lead with that id");
+  if (["won", "lost", "nurture"].includes(lead.status)) throw new ToolError("lead_closed", `The lead is ${lead.status}; nothing is queued`);
+  const { count: replies } = await db.from("email_replies").select("id", { count: "exact", head: true }).eq("lead_id", lead_id);
+  if (replies) throw new ToolError("replied", "This lead has replied, so the engine doesn't queue more emails; a person takes it from here");
+
+  if (step === 2) {
+    const { data: parent } = await db.from("email_messages").select("id,lead_id,sequence_step").eq("id", parentId).maybeSingle();
+    if (!parent || parent.lead_id !== lead_id) throw new ToolError("invalid_input", "reply_to_email_id isn't an email on this lead");
+    if (parent.sequence_step !== 1) throw new ToolError("sequence_limit", "Only the first email gets a follow-up from the engine; there is no step 3");
+  }
+
+  const actor = await getConnectorUserId();
+  const p: Record<string, unknown> = { lead_id, to, subject, body };
+  if (parentId) p.follow_up_of = parentId;
+  if (runId) p.run_id = runId;
+  if (typeof a.partnership_concept === "string") p.partnership_concept = a.partnership_concept;
+  const { data: r, error } = await db.rpc("engine_create_draft", { p, p_actor: actor });
+  if (error) throw error;
+  if (!r?.ok) {
+    throw new ToolError(mapQueueError(r?.error ?? "invalid_input"), r?.message ?? "Not queued", { crm_error: r?.error, email_id: r?.email_id });
+  }
+  if (typeof a.to_name === "string" && a.to_name.trim()) {
+    await db.from("email_messages").update({ to_name: a.to_name.trim() }).eq("id", r.email_id);
+  }
+
+  const out: Record<string, unknown> = {
+    email_id: r.email_id,
+    status: SPEC_STATUS[r.status] ?? r.status,
+    sequence_step: r.sequence_step,
+    blocker: r.blocker,
+    eligibility: r.eligibility,
+    scheduled_for: null,
+    position_in_queue: null,
+  };
+  if (r.status === "approved") {
+    const now = new Date();
+    const { data: me } = await db.from("email_messages").select("approved_at").eq("id", r.email_id).single();
+    const s = await emailSettings();
+    const position = await countMessages((q) => q.eq("status", "approved").lte("approved_at", me!.approved_at));
+    const sentToday = await countMessages((q) => q.gte("sent_at", lagosMidnight(now).toISOString()));
+    out.position_in_queue = position;
+    out.scheduled_for = estimateSendTime(now, s, sentToday, position);
+    if (s.sending_paused) out.notice = "Sending is paused in Settings; it will go out when sending resumes.";
+    else if (sentToday + position > s.daily_send_limit) {
+      out.notice = "daily_limit: today's sending limit is full, so it is scheduled for a later sending day.";
+    }
+  } else {
+    out.notice = "Waiting in Email review for a person: " + (r.blocker ?? "review is switched on in Settings");
+  }
+  return out;
+}
+
+async function listEmailEvents(a: Record<string, unknown>) {
+  const all = ["reply", "bounce", "problem", "sent", "queued", "to_review", "rejected", "cancelled"];
+  const types = Array.isArray(a.types) && a.types.length ? (a.types as string[]).filter((t) => all.includes(t)) : all;
+  const limit = Math.min(Math.max(Number(a.limit) || 100, 1), 200);
+  const offset = Math.max(Number(a.cursor) || 0, 0);
+  const fetchN = offset + limit + 1;
+  const since = typeof a.since === "string" && !Number.isNaN(Date.parse(a.since)) ? new Date(a.since).toISOString() : null;
+  const leadId = typeof a.lead_id === "string" && UUID_RE.test(a.lead_id) ? a.lead_id : null;
+
+  type Ev = Record<string, unknown> & { occurred_at: string };
+  const events: Ev[] = [];
+  const msgCols = "id,lead_id,to_email,subject,status,sequence_step,error,created_at,approved_at,sent_at,bounced_at,complained_at,reviewed_at,updated_at,leads:lead_id(company_name,full_name)";
+  const company = (m: any) => m.leads?.company_name ?? m.leads?.full_name ?? null;
+  const msgEvent = (m: any, type: string, at: string | null, extra: Record<string, unknown> = {}): Ev => ({
+    email_id: m.id, lead_id: m.lead_id, company_name: company(m), to_email: m.to_email, type,
+    occurred_at: toLagosIso(new Date(at ?? m.updated_at)), subject: m.subject, reply_text: null, bounce_type: null,
+    sequence_step: m.sequence_step, status: m.status, error: m.error ?? null, ...extra,
+  });
+  const messages = async (statuses: string[], timeCol: string, extra?: (q: any) => any) => {
+    let q = db.from("email_messages").select(msgCols).in("status", statuses).order(timeCol, { ascending: false, nullsFirst: false }).limit(fetchN);
+    if (since) q = q.gte(timeCol, since);
+    if (leadId) q = q.eq("lead_id", leadId);
+    if (extra) q = extra(q);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data ?? [];
+  };
+
+  if (types.includes("reply")) {
+    let q = db.from("email_replies")
+      .select("id,lead_id,from_email,subject,body_text,received_at,classification,handled,leads:lead_id(company_name,full_name),email:email_message_id(id,sequence_step)")
+      .order("received_at", { ascending: false }).limit(fetchN);
+    if (since) q = q.gte("received_at", since);
+    if (leadId) q = q.eq("lead_id", leadId);
+    const { data, error } = await q;
+    if (error) throw error;
+    for (const r of (data ?? []) as any[]) {
+      events.push({
+        email_id: r.email?.id ?? null, reply_id: r.id, lead_id: r.lead_id, company_name: company(r), to_email: r.from_email,
+        type: "reply", occurred_at: toLagosIso(new Date(r.received_at)), subject: r.subject,
+        reply_text: stripQuoted(r.body_text), bounce_type: null, sequence_step: r.email?.sequence_step ?? null,
+        classification: r.classification, handled: r.handled,
+      });
+    }
+  }
+  if (types.includes("bounce")) {
+    for (const m of await messages(["bounced"], "bounced_at")) events.push(msgEvent(m, "bounce", m.bounced_at, { bounce_type: "hard" }));
+    for (const m of await messages(["sent", "delivered"], "updated_at", (q) => q.ilike("error", "Temporary bounce%"))) {
+      events.push(msgEvent(m, "bounce", m.updated_at, { bounce_type: "soft" }));
+    }
+  }
+  if (types.includes("problem")) for (const m of await messages(["failed", "complained"], "updated_at")) events.push(msgEvent(m, "problem", m.complained_at ?? m.updated_at));
+  if (types.includes("sent")) for (const m of await messages(["sent", "delivered"], "sent_at")) events.push(msgEvent(m, "sent", m.sent_at));
+  if (types.includes("queued")) for (const m of await messages(["approved", "sending"], "approved_at")) events.push(msgEvent(m, "queued", m.approved_at));
+  if (types.includes("to_review")) for (const m of await messages(["draft"], "created_at")) events.push(msgEvent(m, "to_review", m.created_at));
+  if (types.includes("rejected")) for (const m of await messages(["rejected"], "updated_at")) events.push(msgEvent(m, "rejected", m.reviewed_at ?? m.updated_at));
+  if (types.includes("cancelled")) for (const m of await messages(["cancelled"], "updated_at")) events.push(msgEvent(m, "cancelled", m.updated_at));
+
+  events.sort((x, y) => Date.parse(y.occurred_at) - Date.parse(x.occurred_at));
+  const page = events.slice(offset, offset + limit);
+
+  const now = new Date();
+  const s = await emailSettings();
+  const fiveStart = businessDaysStart(now, 5, s.send_days).toISOString();
+  const summary = {
+    sent_today: await countMessages((q) => q.gte("sent_at", lagosMidnight(now).toISOString())),
+    daily_limit: s.daily_send_limit,
+    queued: await countMessages((q) => q.in("status", ["approved", "sending"])),
+    to_review: await countMessages((q) => q.eq("status", "draft")),
+    sent_last_5_business_days: await countMessages((q) => q.gte("sent_at", fiveStart)),
+    bounces_last_5_business_days: await countMessages((q) => q.eq("status", "bounced").gte("bounced_at", fiveStart)),
+    sending_paused: s.sending_paused,
+  };
+  return {
+    summary,
+    events: page,
+    next_cursor: events.length > offset + limit ? String(offset + limit) : null,
+  };
+}
+
+async function setEmailOptOut(a: Record<string, unknown>) {
+  const leadId = typeof a.lead_id === "string" ? a.lead_id.trim() : "";
+  const email = typeof a.email === "string" ? a.email.trim().toLowerCase() : "";
+  if (a.clear === true || a.opt_out === false) {
+    throw new ToolError("not_allowed", "Only management or admins can allow emailing again, in the CRM (Settings → Do-not-contact list).");
+  }
+  if (!leadId && !email) throw new ToolError("invalid_input", "Give lead_id, email, or both");
+  if (leadId && !UUID_RE.test(leadId)) throw new ToolError("invalid_input", "lead_id must be a lead's id");
+  if (email && !EMAIL_RE.test(email)) throw new ToolError("invalid_input", "email must be an email address");
+  const reason = ["unsubscribed", "opt_out_request", "do_not_contact", "other"].includes(a.reason as string)
+    ? (a.reason as string) : "opt_out_request";
+  const actor = await getConnectorUserId();
+  const done: Record<string, unknown> = {};
+
+  if (leadId) {
+    const { data, error } = await db.from("leads").update({ email_opt_out: true }).eq("id", leadId).select("id,email").maybeSingle();
+    if (error) throw error;
+    if (!data) throw new ToolError("invalid_input", "No lead with that id");
+    done.lead_marked_do_not_email = true;
+  }
+  if (email) {
+    const { data: existing } = await db.from("suppressions").select("id").eq("email", email).maybeSingle();
+    if (!existing) {
+      const { error } = await db.from("suppressions").insert({
+        email, reason, source: "connector", lead_id: leadId || null,
+        note: typeof a.note === "string" ? a.note.slice(0, 300) : null, created_by: actor,
+      });
+      if (error) throw error;
+    }
+    done.address_on_do_not_contact_list = email;
+  }
+  // nothing queued may go out to them now
+  let q = db.from("email_messages").update({ status: "cancelled", error: "Cancelled: marked Do not email" }).in("status", ["draft", "approved"]);
+  q = leadId && email ? q.or(`lead_id.eq.${leadId},to_email.eq.${email}`) : leadId ? q.eq("lead_id", leadId) : q.eq("to_email", email);
+  const { data: cancelled, error: ce } = await q.select("id");
+  if (ce) throw ce;
+  done.cancelled_email_ids = (cancelled ?? []).map((m: any) => m.id);
+  await db.from("audit_log").insert({ actor_id: actor, action: "connector.email.opt_out", detail: { lead_id: leadId || null, email: email || null, reason, ...done } });
+  return { ok: true, ...done };
+}
+
+async function cancelQueuedEmail(a: Record<string, unknown>) {
+  const id = typeof a.email_id === "string" ? a.email_id.trim() : "";
+  if (!UUID_RE.test(id)) throw new ToolError("invalid_input", "email_id must be an email's id");
+  const { data: m, error } = await db.from("email_messages").select("id,status").eq("id", id).maybeSingle();
+  if (error) throw error;
+  if (!m) throw new ToolError("invalid_input", "No email with that id");
+  if (!["draft", "approved"].includes(m.status)) {
+    throw new ToolError("not_cancellable", `It is already ${SPEC_STATUS[m.status] ?? m.status}; only emails waiting in review or the queue can be cancelled`);
+  }
+  const reason = typeof a.reason === "string" && a.reason.trim() ? a.reason.trim().slice(0, 300) : "Cancelled by the Claude connector";
+  const { data: upd, error: ue } = await db.from("email_messages").update({ status: "cancelled", error: reason })
+    .eq("id", id).in("status", ["draft", "approved"]).select("id").maybeSingle();
+  if (ue) throw ue;
+  if (!upd) throw new ToolError("not_cancellable", "It started sending a moment ago and can no longer be cancelled");
+  const actor = await getConnectorUserId();
+  await db.from("audit_log").insert({ actor_id: actor, action: "connector.email.cancel", detail: { email_id: id, reason } });
+  return { ok: true, email_id: id, status: "cancelled" };
+}
 
 // ---------------------------------------------------------------------------
 // Tool implementations
@@ -609,6 +955,17 @@ async function callTool(name: string, args: Record<string, unknown>) {
       return data;
     }
 
+    case "record_contact_source":
+      return await recordContactSource(args);
+    case "queue_email":
+      return await queueEmail(args);
+    case "list_email_events":
+      return await listEmailEvents(args);
+    case "set_email_opt_out":
+      return await setEmailOptOut(args);
+    case "cancel_queued_email":
+      return await cancelQueuedEmail(args);
+
     default:
       throw new Error(`Unknown tool "${name}"`);
   }
@@ -698,7 +1055,12 @@ Deno.serve(async (req) => {
         return new Response(
           JSON.stringify(
             rpcResult(id, {
-              content: [{ type: "text", text: e instanceof Error ? e.message : "Tool error" }],
+              content: [{
+                type: "text",
+                text: e instanceof ToolError
+                  ? JSON.stringify({ error: e.code, message: e.message, ...e.extra })
+                  : e instanceof Error ? e.message : "Tool error",
+              }],
               isError: true,
             }),
           ),

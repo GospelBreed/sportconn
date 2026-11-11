@@ -76,7 +76,7 @@ and all UI primitives.
     Any migration that creates or replaces a function ends with
     `revoke execute on function … from public, anon;` plus the right `grant`
     (`authenticated` for staff-facing RPCs, `service_role` only for engine /
-    sender functions). 0009 locked down everything up to that point.
+    sender functions). 0009 locked down everything up to that point; 0010 follows the rule.
 
 ## Roles
 `super_admin` · `admin` · `management` · `business_development` · `sales` ·
@@ -150,7 +150,10 @@ supabase/
                              reply classification, get_engine_dashboard()
   functions/send-email/      Edge Function — lead emails via Resend (runs as the
                              caller; logs outbound outreach)
-  functions/mcp-server/      Edge Function — the CRM as a Claude connector
+  migrations/0010_connector_email.sql  generic-inbox + nurture send rules, Contacted
+                             on first send (connector email actions use them)
+  functions/mcp-server/      Edge Function — the CRM as a Claude connector (incl.
+                             queue_email / list_email_events; helpers in email.ts)
   functions/manage-users/    Edge Function — privileged user management
   seed.sql                   fictional demo data (optional, idempotent)
 frontend/

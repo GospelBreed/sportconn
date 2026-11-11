@@ -377,3 +377,34 @@ it.
 
 Every blueprint workflow now has its CRM endpoints. Sending stays under human
 review until you switch review off in Settings — the blueprint's phase 4.
+
+---
+
+## Claude connector email actions (`mcp-server`, migration 0010)
+
+The same queue is open to the Claude connector, so an engine running as a
+Claude task needs no browser. Everything goes through the queue's rules; the
+connector can't send directly.
+
+| Action | Does |
+|---|---|
+| `record_contact_source` | Same as `POST /contacts/eligibility`. Do it before queueing, or the email waits in review as "not eligible". |
+| `queue_email` | `lead_id, to_email, to_name?, subject (≤150), body_text (≤5,000), sequence_step 1\|2, reply_to_email_id (step 2), engine_run_id?`. Returns `email_id`, `status` (`queued` or `to_review` + `blocker`), estimated `scheduled_for`, `position_in_queue`. |
+| `list_email_events` | `types?, since?, lead_id?, limit?, cursor?`. Replies (quoted history removed), hard/soft bounces, problems, sent, queued, to_review, rejected, cancelled, plus a `summary` (sent today, limit, queued, sends and bounces over the last 5 business days). |
+| `set_email_opt_out` | Marks a lead and/or address Do not email and cancels anything queued to it. Only management can reverse it, in the CRM. |
+| `cancel_queued_email` | Cancels an email still in review or queued. |
+| `update_lead` | Now also accepts `last_researched_at`, `engine_run_id`. |
+
+Refusal codes: `do_not_email`, `recipient_mismatch`, `generic_inbox`,
+`duplicate`, `person_spacing`, `sequence_order`, `sequence_limit` (no step 3),
+`replied`, `lead_closed` (won, lost or nurture), `invalid_input`; the CRM's own
+code is in `crm_error`.
+
+Rules added by 0010 for both the connector and the engine API: generic inboxes
+(info@, hello@, admin@, contact@, support@) are never sent from the queue;
+nurture leads count as closed; a first email that sends moves a Researched /
+Prospect lead to Contacted. Follow-ups keep their own spacing (Settings → Email
+sending, default 4 then 7 days); the 14-day gap applies to new conversations
+only. Not supported: `send_after` — emails go in the next open sending window.
+The per-company limit and the daily limit never refuse an email: it waits for
+the next batch or day.
