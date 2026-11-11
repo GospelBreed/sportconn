@@ -68,6 +68,14 @@ export function useLeads(filters: db.LeadFilters = {}) {
   return useQuery({ queryKey: ["leads", filters], queryFn: () => db.listLeads(filters) });
 }
 
+export function useLeadsPage(filters: db.LeadFilters, page: number, pageSize: number) {
+  return useQuery({
+    queryKey: ["leads", "page", filters, page, pageSize],
+    queryFn: () => db.listLeadsPage(filters, page, pageSize),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useLeadDetail(id: string | null) {
   return useQuery({
     queryKey: ["lead", id],
@@ -452,6 +460,39 @@ export function useDeleteDeliverable(leadId: string) {
   return useMutation({
     mutationFn: (id: string) => db.deleteDeliverable(id),
     onSuccess: () => invalidateLeadExecution(qc, leadId),
+  });
+}
+
+// ======================= SUPPRESSION LIST + ENGINE (0006) =======================
+export function useSuppressions() {
+  return useQuery({ queryKey: ["suppressions"], queryFn: db.listSuppressions });
+}
+
+export function useAddSuppression() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof db.addSuppression>[0]) => db.addSuppression(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["suppressions"] }),
+  });
+}
+
+export function useRemoveSuppression() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => db.removeSuppression(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["suppressions"] }),
+  });
+}
+
+export function useEngineRuns() {
+  return useQuery({ queryKey: ["engine-runs"], queryFn: () => db.listEngineRuns(14), refetchInterval: 60_000 });
+}
+
+export function useEngineLeadsSince(sinceIso: string) {
+  return useQuery({
+    queryKey: ["engine-leads-since", sinceIso],
+    queryFn: () => db.countEngineLeadsSince(sinceIso),
+    refetchInterval: 60_000,
   });
 }
 

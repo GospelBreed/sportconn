@@ -18,6 +18,8 @@ import {
   CONTRACT_STATUSES,
   PAYMENT_STATUS_LABEL,
   PAYMENT_STATUSES,
+  PRIORITY_MIN,
+  QUALIFY_MIN,
   RENEWAL_STATUS_LABEL,
   RENEWAL_STATUSES,
   SCORE_FACTORS,
@@ -212,33 +214,47 @@ function Qualification({
   save: (body: Partial<Lead>, ok?: string) => void;
 }) {
   const tier = prospectTier(lead.prospect_score);
+  const toast = useToast();
   return (
     <section className="card-base space-y-3 p-4">
       <div className="flex items-start justify-between gap-3">
-        <SectionTitle icon="sparkle" title="Prospect score" hint="A high score means a promising lead, not confirmed budget." />
+        <SectionTitle
+          icon="sparkle"
+          title="Qualification score"
+          hint={`Out of 100. ${QUALIFY_MIN}+ qualifies, ${PRIORITY_MIN}+ is priority. A high score means a promising lead, not confirmed budget.`}
+        />
         <div className="text-right">
-          <p className="text-lg font-bold text-ink">{lead.prospect_score ?? "—"}<span className="text-xs font-medium text-muted"> / 10</span></p>
+          <p className="text-lg font-bold text-ink">{lead.prospect_score ?? "—"}<span className="text-xs font-medium text-muted"> / 100</span></p>
           {tier ? <Badge className={tier.badge}>{tier.label}</Badge> : <span className="text-xs text-muted">Not scored yet</span>}
         </div>
       </div>
-      <div className="divide-y divide-line/70">
+      <div className="divide-y divide-line/70" key={lead.id}>
         {SCORE_FACTORS.map((f) => (
           <div key={f.field} className="flex items-center justify-between gap-3 py-2">
             <span className="text-sm text-body">{f.label}</span>
-            <Select
-              aria-label={f.label}
-              value={lead[f.field] ?? ""}
-              disabled={!canWrite}
-              onChange={(e) =>
-                save({ [f.field]: e.target.value === "" ? null : Number(e.target.value) } as Partial<Lead>, "Score updated")
-              }
-              className="h-8 w-20 shrink-0 text-xs"
-            >
-              <option value="">—</option>
-              <option value="0">0</option>
-              <option value="1">1</option>
-              <option value="2">2</option>
-            </Select>
+            <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+              <Input
+                type="number"
+                min={0}
+                max={f.max}
+                aria-label={`${f.label}, out of ${f.max}`}
+                defaultValue={lead[f.field] ?? ""}
+                disabled={!canWrite}
+                className="h-8 w-16 text-xs"
+                onBlur={(e) => {
+                  const raw = e.target.value;
+                  if (raw === "" && lead[f.field] == null) return;
+                  const n = raw === "" ? null : Math.round(Number(raw));
+                  if (n !== null && (Number.isNaN(n) || n < 0 || n > f.max)) {
+                    toast.error(`${f.label} is scored 0–${f.max}`);
+                    e.target.value = String(lead[f.field] ?? "");
+                    return;
+                  }
+                  if (n !== (lead[f.field] ?? null)) save({ [f.field]: n } as Partial<Lead>, "Score updated");
+                }}
+              />
+              / {f.max}
+            </span>
           </div>
         ))}
       </div>

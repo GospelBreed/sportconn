@@ -208,6 +208,25 @@ Mark items `[x]` as completed. Keep this file honest.
 - [ ] Send a real test email to an internal address
 - [ ] Later: Resend webhooks for delivered / opened / bounced and reply capture
 
+## Phase 17 — AI Partnership Acquisition Engine, group 1 (foundation)
+- [x] `0006_acquisition_engine.sql`: 100-point score (replaces 0004's 10-point), company_domain
+      (normalised, unique, derived) + company_key, `lead_research`, `suppressions` (+ opt-out sync,
+      `is_suppressed`), `engine_runs`, source `ai_engine`, `engine_upsert_lead` / `engine_check_leads`
+      (service role only)
+- [x] `engine-api` Edge Function (health, runs, check, search, upsert, patch, suppression, stats) +
+      `docs/ENGINE_API.md`
+- [x] `send-email` refuses suppressed addresses; `mcp-server` knows the new score fields
+- [x] UI: 100-point score on the Deal tab, Research tab, company domain field, Score column on
+      Sponsors/Partners, Leads table paging + full CSV export, Settings → Do-not-contact list,
+      Sponsors → AI engine tab
+- [x] Tested: 46 DB checks on throwaway Postgres; engine-api routing/auth/validation run locally;
+      `deno check` on all functions; `npm run build` green
+- [ ] Apply 0006, set `ENGINE_API_KEY`, deploy `engine-api`, redeploy `send-email` and `mcp-server`,
+      then deploy the frontend
+- [ ] Group 2: contact eligibility/provenance, email drafts + review + sending queue, unsubscribe link,
+      delivery events (Resend webhooks)
+- [ ] Group 3: reply capture, follow-up sequences, engine dashboard metrics
+
 ## Deferred (hooks only — do NOT build unless asked)
 - [ ] Calendar integration (`cases.calendar_event_id`, sync button slot present)
 - [ ] Granular security / permission matrix (`users.is_active`, Advanced card present)

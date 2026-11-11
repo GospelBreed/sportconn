@@ -12,7 +12,7 @@
 //   • caller must be signed in and have write access (viewers can't send)
 //   • recipient must be an address already on the lead or its contacts —
 //     this is not a general-purpose mail relay
-//   • leads marked "do not email" are refused
+//   • leads marked "do not email" and suppressed addresses/domains are refused
 //   • per-user daily cap (EMAIL_DAILY_LIMIT, default 100)
 //
 // Emails go out as plain text, from "<sender name> at SportConn" on the
@@ -120,6 +120,13 @@ Deno.serve(async (req) => {
     ]);
     if (!to || !allowed.has(to)) {
       return json({ error: "Send only to an email address saved on this lead or its contacts." }, 400);
+    }
+
+    // Permanent do-not-contact list (0006): the address or its domain.
+    const { data: suppressed, error: supErr } = await db.rpc("is_suppressed", { p_email: to });
+    if (supErr) throw supErr;
+    if (suppressed) {
+      return json({ error: "This address is on the do-not-contact list (unsubscribed, opted out or blocked). It can't be emailed." }, 409);
     }
 
     const since = new Date(Date.now() - 24 * 3600_000).toISOString();

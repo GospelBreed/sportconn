@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useDeleteLead, useLeads, usePipelineStages, usePipelines, useUsers } from "@/hooks/queries";
+import { useDeleteLead, useLeadsPage, usePipelineStages, usePipelines, useUsers } from "@/hooks/queries";
+import { listLeads } from "@/lib/db";
 import { useDebounced } from "@/hooks/useDebounced";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useRole } from "@/lib/auth";
@@ -20,6 +21,8 @@ import { LeadCsvModal } from "@/features/leads/LeadCsvModal";
 import { leadsToCsvRows } from "@/features/leads/leadCsv";
 import { downloadFile, toCsv } from "@/lib/csv";
 import type { Lead, PipelineKey } from "@/types";
+
+const PAGE_SIZE = 50;
 
 export function LeadsPage({
   pipeline: lockedPipeline,
@@ -54,7 +57,7 @@ export function LeadsPage({
   const { data: pipelines } = usePipelines();
   const { data: stages } = usePipelineStages((pipelineFilter || undefined) as PipelineKey | undefined);
   const { data: users } = useUsers();
-  const { data: leads, isLoading, isError, refetch } = useLeads({
+  const filters = {
     q: q || undefined,
     pipeline: lockedPipeline ?? (pipelineFilter || undefined),
     lead_type: leadType || undefined,
@@ -62,7 +65,16 @@ export function LeadsPage({
     temperature: temperature || undefined,
     source: source || undefined,
     assigned_to: owner || undefined,
-  });
+  };
+  const showScore = lockedPipeline === "sponsor" || lockedPipeline === "strategic_partnership";
+  const [page, setPage] = useState(0);
+  const filterKey = JSON.stringify(filters);
+  useEffect(() => setPage(0), [filterKey]);
+  const { data: pageData, isLoading, isError, refetch, isFetching } = useLeadsPage(filters, page, PAGE_SIZE);
+  const leads = pageData?.rows;
+  const total = pageData?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const [exporting, setExporting] = useState(false);
   const del = useDeleteLead();
 
   const [selected, setSelected] = useState<string | null>(params.get("focus"));
@@ -70,16 +82,24 @@ export function LeadsPage({
   const [csvOpen, setCsvOpen] = useState(false);
   const [toDelete, setToDelete] = useState<Lead | null>(null);
 
-  const exportCsv = () => {
-    const list = leads ?? [];
-    if (list.length === 0) {
-      toast.error("Nothing to export with the current filters");
-      return;
+  // Exports every lead matching the filters, not just the page on screen.
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const list = await listLeads(filters);
+      if (list.length === 0) {
+        toast.error("Nothing to export with the current filters");
+        return;
+      }
+      const { headers, rows } = leadsToCsvRows(list);
+      const stamp = new Date().toISOString().slice(0, 10);
+      downloadFile(`sportconn-leads-${stamp}.csv`, toCsv(headers, rows));
+      toast.success(`Exported ${list.length} lead${list.length === 1 ? "" : "s"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
-    const { headers, rows } = leadsToCsvRows(list);
-    const stamp = new Date().toISOString().slice(0, 10);
-    downloadFile(`sportconn-leads-${stamp}.csv`, toCsv(headers, rows));
-    toast.success(`Exported ${list.length} lead${list.length === 1 ? "" : "s"}`);
   };
 
   useEffect(() => {
@@ -116,7 +136,7 @@ export function LeadsPage({
               </Button>
             )}
             {canExport && (
-              <Button variant="secondary" onClick={exportCsv}>
+              <Button variant="secondary" onClick={exportCsv} loading={exporting}>
                 <Icon name="external" size={15} /> Export CSV
               </Button>
             )}
@@ -213,7 +233,7 @@ export function LeadsPage({
                   <th className="hidden px-4 py-3 font-semibold xl:table-cell">Type</th>
                   <th className="hidden px-4 py-3 font-semibold lg:table-cell">Location</th>
                   <th className="hidden px-4 py-3 font-semibold lg:table-cell">Owner</th>
-                  {lockedPipeline === "sponsor" && <th className="px-4 py-3 font-semibold">Score</th>}
+                  {showScore && <th className="px-4 py-3 font-semibold">Score</th>}
                   <th className="px-4 py-3 font-semibold">Value</th>
                   <th className="px-4 py-3 font-semibold">Temp</th>
                   <th className="px-4 py-3 font-semibold">Stage</th>
@@ -245,7 +265,7 @@ export function LeadsPage({
                       {[l.location_city, l.location_country].filter(Boolean).join(", ") || "—"}
                     </td>
                     <td className="hidden px-4 py-3 text-muted lg:table-cell">{l.assignee?.full_name ?? "Unassigned"}</td>
-                    {lockedPipeline === "sponsor" && (
+                    {showScore && (
                       <td className="px-4 py-3">
                         {l.prospect_score != null ? (
                           <Badge className={prospectTier(l.prospect_score)?.badge}>
@@ -287,6 +307,25 @@ export function LeadsPage({
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+        {!isLoading && !isError && total > 0 && (
+          <div className="flex flex-col items-center justify-between gap-2 border-t border-line px-4 py-3 text-xs text-muted sm:flex-row">
+            <span>
+              Showing {page * PAGE_SIZE + 1}–{Math.min(total, (page + 1) * PAGE_SIZE)} of {total.toLocaleString("en-US")}
+              {isFetching ? " · updating…" : ""}
+            </span>
+            <span className="flex items-center gap-2">
+              <Button size="sm" variant="secondary" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                <Icon name="chevron-left" size={14} /> Previous
+              </Button>
+              <span>
+                Page {page + 1} of {pageCount}
+              </span>
+              <Button size="sm" variant="secondary" disabled={page + 1 >= pageCount} onClick={() => setPage((p) => p + 1)}>
+                Next <Icon name="chevron-right" size={14} />
+              </Button>
+            </span>
           </div>
         )}
       </div>

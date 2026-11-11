@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLeads, usePendingApprovals, useSponsorScorecard } from "@/hooks/queries";
+import { useEngineLeadsSince, useEngineRuns, useLeads, usePendingApprovals, useSponsorScorecard } from "@/hooks/queries";
 import { useRealtime } from "@/hooks/useRealtime";
 import { useRole } from "@/lib/auth";
 import { Badge, Input, Progress } from "@/components/ui/primitives";
@@ -7,12 +7,12 @@ import { Icon } from "@/components/ui/Icon";
 import { ErrorState, Skeleton } from "@/components/ui/states";
 import { Tabs } from "@/components/ui/overlays";
 import { cn } from "@/lib/cn";
-import { daysInStage, followupBucket, formatDate } from "@/lib/format";
+import { daysInStage, followupBucket, formatDate, formatDateTime } from "@/lib/format";
 import { formatCompactMoney } from "@/lib/money";
-import type { Lead, SponsorScorecard } from "@/types";
+import type { EngineRun, Lead, SponsorScorecard } from "@/types";
 import { ApprovalRow } from "./SponsorDealTab";
 
-type Panel = "scorecard" | "attention" | "approvals";
+type Panel = "scorecard" | "attention" | "approvals" | "engine";
 
 // SOP §11 bottleneck guide, keyed by the first funnel metric that is behind target.
 const BOTTLENECK: Record<string, string> = {
@@ -40,13 +40,94 @@ export function SponsorExecutionPanel({ onOpenLead }: { onOpenLead: (id: string)
           { key: "scorecard", label: "30-day scorecard" },
           { key: "attention", label: "Needs attention", count: attention.length },
           { key: "approvals", label: "Approvals", count: approvals?.length ?? 0 },
+          { key: "engine", label: "AI engine" },
         ]}
       />
       <div className="pt-4">
         {panel === "scorecard" && <Scorecard />}
         {panel === "attention" && <Attention items={attention} total={open?.length ?? 0} onOpenLead={onOpenLead} />}
         {panel === "approvals" && <PendingApprovals />}
+        {panel === "engine" && <EngineMonitor />}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** Start of today in Lagos (UTC+1, no daylight saving) — the engine counts days the same way. */
+function lagosDayStartIso(): string {
+  const date = new Date(Date.now() + 3600_000).toISOString().slice(0, 10);
+  return new Date(`${date}T00:00:00+01:00`).toISOString();
+}
+
+const RUN_STATUS_META: Record<EngineRun["status"], { label: string; cls: string }> = {
+  running: { label: "Running", cls: "bg-info/12 text-info" },
+  completed: { label: "Completed", cls: "bg-success/12 text-success" },
+  partial: { label: "Partial", cls: "bg-warning/14 text-warning" },
+  failed: { label: "Failed", cls: "bg-danger/12 text-danger" },
+};
+
+function EngineMonitor() {
+  const since = useMemo(lagosDayStartIso, []);
+  const today = useEngineLeadsSince(since);
+  const runs = useEngineRuns();
+  const target = runs.data?.find((r) => r.target != null)?.target ?? 80;
+  const created = today.data ?? 0;
+
+  if (runs.isLoading || today.isLoading) return <Skeleton className="h-24" />;
+  if (runs.isError || today.isError) {
+    return <ErrorState message="Could not load engine activity. Has migration 0006 been applied?" onRetry={() => { runs.refetch(); today.refetch(); }} />;
+  }
+  return (
+    <div className="space-y-4">
+      <div className="rounded-control border border-line p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">New qualified leads today</p>
+        <p className="mt-1 text-xl font-bold text-ink">
+          {created}
+          <span className="text-xs font-medium text-muted"> / {target}</span>
+        </p>
+        <Progress value={target > 0 ? (created / target) * 100 : 100} className="mt-2" />
+        <p className="mt-1 text-[11px] text-muted">
+          Leads the AI Partnership Engine added since midnight (Lagos). Filter the list below by source “AI Partnership Engine”
+          to review them.
+        </p>
+      </div>
+      {!runs.data || runs.data.length === 0 ? (
+        <p className="py-2 text-sm text-muted">
+          The engine hasn't run yet. Runs appear here once n8n is connected to the CRM's engine API.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[520px] text-xs">
+            <thead>
+              <tr className="border-b border-line text-left uppercase tracking-wide text-muted">
+                <th className="py-2 pr-3 font-semibold">Started</th>
+                <th className="py-2 pr-3 font-semibold">Status</th>
+                <th className="py-2 pr-3 font-semibold">Created</th>
+                <th className="py-2 pr-3 font-semibold">Updated</th>
+                <th className="py-2 pr-3 font-semibold">Duplicates</th>
+                <th className="py-2 font-semibold">Rejected</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.data.map((r) => (
+                <tr key={r.id} className="border-b border-line/70 last:border-0">
+                  <td className="py-2 pr-3 text-body" title={r.notes ?? undefined}>{formatDateTime(r.started_at)}</td>
+                  <td className="py-2 pr-3">
+                    <Badge className={RUN_STATUS_META[r.status].cls}>{RUN_STATUS_META[r.status].label}</Badge>
+                    {r.errors.length > 0 && <span className="ml-1 text-danger">{r.errors.length} error{r.errors.length === 1 ? "" : "s"}</span>}
+                  </td>
+                  <td className="py-2 pr-3 text-body">{r.created_count}{r.target != null ? ` / ${r.target}` : ""}</td>
+                  <td className="py-2 pr-3 text-body">{r.updated_count}</td>
+                  <td className="py-2 pr-3 text-body">{r.duplicate_count}</td>
+                  <td className="py-2 text-body">{r.rejected_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

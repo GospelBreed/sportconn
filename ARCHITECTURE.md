@@ -307,7 +307,7 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
 (score → qualify → propose → contract → get paid → deliver → renew).
 
 - **`leads` sponsor columns** — five 0–2 qualification scores and a generated
-  `prospect_score` (null until scored; UI tiers it A ≥8 / B 5–7 / C ≤4),
+  `prospect_score` (null until scored; replaced by the 100-point score in 0006, §3.16),
   `fit_reason`, `package_id`, `expected_decision_date`, `contract_status`,
   `contract_value`, `invoice_number`, `payment_status`, `payment_due_date`,
   `amount_received`, `paid_at` (stamped by trigger), `vendor_registration`,
@@ -349,6 +349,39 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
   `frontend/src/features/leads/emailTemplates.ts`; unfilled `[placeholders]`
   block sending.
 - Not built: reply capture / open & bounce tracking (Resend webhooks), bulk sends.
+
+### 3.16 Acquisition engine — migration `0006_acquisition_engine.sql` + `engine-api`
+
+- **Score:** 0004's five 0–2 factors are dropped. Six factors (audience 25,
+  marketing 20, partnership_evidence 15, collaboration 15, decision_access 15,
+  contact_quality 10) feed the generated `prospect_score` (0–100). UI tiers:
+  ≥ 80 priority, 65–79 qualified, < 65 below threshold (`QUALIFY_MIN` /
+  `PRIORITY_MIN` in `lib/constants.ts`).
+- **Company identity:** `leads.company_domain` (normalised by
+  `normalize_domain()`; derived from website or a non-free-mail email by the
+  `leads_company_domain` trigger; unique) and generated `leads.company_key`
+  (`normalize_company_name()`, match only). The trigger refuses a second lead
+  for a known domain with a readable message.
+- **`suppressions`** (email XOR domain, normalised, unique): permanent, survives
+  lead deletion; `is_suppressed(email)` also covers the email's domain and
+  parent domains. A lead's *Do not email* tick inserts `source='lead_opt_out'`
+  rows; unticking removes only those. RLS: insert `can_write()`, delete
+  `can_approve()`. `send-email` refuses suppressed addresses.
+- **`lead_research`** — versioned (latest = current), `sources` must be URLs,
+  verified facts and assumptions kept separately. Staff may insert only
+  `origin='manual'`; AI rows come from the engine.
+- **`engine_runs`** — written only by the service role; staff read.
+- **`engine_upsert_lead(p, actor, min_score)` / `engine_check_leads(p)`** —
+  security definer, EXECUTE revoked from `public`/`anon`/`authenticated`,
+  granted to `service_role`. One transaction per lead: validate → dedupe
+  (domain, then name for domain-less leads) → create or refresh → contacts
+  (suppressed / known skipped) → research row → timeline → `audit_log`.
+- **`engine-api`** Edge Function: bearer `ENGINE_API_KEY`, service-role client,
+  writes attributed to the provisioned `engine@sportconn.internal` user; PATCH
+  is limited to a field allow-list and never Won/Lost stages. See
+  `docs/ENGINE_API.md`.
+- **Paging:** `listLeads()` fetches in 1,000-row chunks (PostgREST's cap); the
+  Leads table pages server-side (`listLeadsPage`, 50 per page, exact count).
 
 ## 4. Row Level Security
 

@@ -9,11 +9,13 @@ import type {
   CaptainDetail,
   DashboardSummary,
   DealApproval,
+  EngineRun,
   Facility,
   FacilityDetail,
   Lead,
   LeadContact,
   LeadDetail,
+  LeadResearch,
   Outreach,
   PipelineDef,
   PipelineKey,
@@ -24,6 +26,7 @@ import type {
   SponsorDeliverable,
   SponsorPackage,
   SponsorScorecard,
+  Suppression,
   Task,
   UserRole,
 } from "@/types";
@@ -101,12 +104,15 @@ export interface LeadFilters {
   assigned_to?: string;
 }
 
-export function listLeads(f: LeadFilters = {}): Promise<Lead[]> {
-  let q = supabase.from("leads").select(LEAD_SELECT);
-  if (f.q)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function leadQuery(f: LeadFilters, select = LEAD_SELECT, count?: "exact"): any {
+  let q = supabase.from("leads").select(select, count ? { count } : undefined);
+  if (f.q) {
+    const s = f.q.replace(/[,()]/g, " ");
     q = q.or(
-      `full_name.ilike.%${f.q}%,company_name.ilike.%${f.q}%,email.ilike.%${f.q}%,location_city.ilike.%${f.q}%`,
+      `full_name.ilike.%${s}%,company_name.ilike.%${s}%,email.ilike.%${s}%,location_city.ilike.%${s}%,company_domain.ilike.%${s}%`,
     );
+  }
   if (f.pipeline) q = q.eq("pipeline", f.pipeline);
   if (f.lead_type) q = q.eq("lead_type", f.lead_type);
   if (f.stage) q = q.eq("stage", f.stage);
@@ -115,7 +121,33 @@ export function listLeads(f: LeadFilters = {}): Promise<Lead[]> {
   if (f.source) q = q.eq("source", f.source);
   if (f.status) q = q.eq("status", f.status);
   if (f.assigned_to) q = q.eq("assigned_to", f.assigned_to);
-  return run<Lead[]>(q.order("last_activity_at", { ascending: false })).then((r) => r ?? []);
+  return q.order("last_activity_at", { ascending: false }).order("id");
+}
+
+// The API returns at most 1,000 rows per request, so whole-list reads are
+// fetched in chunks; with the engine adding ~80 leads a day a single request
+// would silently drop leads within two weeks.
+const CHUNK = 1000;
+
+export async function listLeads(f: LeadFilters = {}): Promise<Lead[]> {
+  const all: Lead[] = [];
+  for (let from = 0; ; from += CHUNK) {
+    const rows = await run<Lead[]>(leadQuery(f).range(from, from + CHUNK - 1));
+    all.push(...(rows ?? []));
+    if (!rows || rows.length < CHUNK) return all;
+  }
+}
+
+/** One page of leads plus the total matching the filters (Leads table). */
+export async function listLeadsPage(
+  f: LeadFilters,
+  page: number,
+  pageSize: number,
+): Promise<{ rows: Lead[]; total: number }> {
+  const from = page * pageSize;
+  const { data, error, count } = await leadQuery(f, LEAD_SELECT, "exact").range(from, from + pageSize - 1);
+  if (error) throw new Error(error.message);
+  return { rows: (data ?? []) as Lead[], total: count ?? 0 };
 }
 
 export function getLead(id: string): Promise<Lead> {
@@ -123,7 +155,7 @@ export function getLead(id: string): Promise<Lead> {
 }
 
 export async function getLeadDetail(id: string): Promise<LeadDetail> {
-  const [lead, outreach, tasks, activities, contacts, approvals, deliverables] = await Promise.all([
+  const [lead, outreach, tasks, activities, contacts, approvals, deliverables, research] = await Promise.all([
     getLead(id),
     run<Outreach[]>(
       supabase.from("outreach").select(OUTREACH_SELECT).eq("lead_id", id).order("occurred_at", { ascending: false }),
@@ -148,6 +180,14 @@ export async function getLeadDetail(id: string): Promise<LeadDetail> {
     run<SponsorDeliverable[]>(
       supabase.from("sponsor_deliverables").select(DELIVERABLE_SELECT).eq("lead_id", id).order("due_date", { ascending: true, nullsFirst: false }),
     ),
+    run<LeadResearch[]>(
+      supabase
+        .from("lead_research")
+        .select("*, author:created_by(id,full_name)")
+        .eq("lead_id", id)
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ),
   ]);
   return {
     ...lead,
@@ -157,6 +197,7 @@ export async function getLeadDetail(id: string): Promise<LeadDetail> {
     contacts: contacts ?? [],
     approvals: approvals ?? [],
     deliverables: deliverables ?? [],
+    research: research ?? [],
   };
 }
 
@@ -583,6 +624,46 @@ export async function updateScorecardTarget(metric: string, body: Partial<Scorec
   const { data, error } = await supabase.from("scorecard_targets").update(body).eq("metric", metric).select("metric");
   if (error) throw new Error(error.message);
   if (!data?.length) throw new Error("Only management or admins can change targets.");
+}
+
+// ===========================================================================
+// SUPPRESSION LIST + ENGINE RUNS (0006)
+// ===========================================================================
+export function listSuppressions(): Promise<Suppression[]> {
+  return run<Suppression[]>(
+    supabase
+      .from("suppressions")
+      .select("*, author:created_by(id,full_name)")
+      .order("created_at", { ascending: false })
+      .limit(1000),
+  ).then((r) => r ?? []);
+}
+
+export function addSuppression(body: Pick<Suppression, "reason"> & { email?: string; domain?: string; note?: string }): Promise<Suppression> {
+  return run<Suppression[]>(supabase.from("suppressions").insert({ ...body, source: "manual" }).select("*")).then((r) => r[0]);
+}
+
+export async function removeSuppression(id: string): Promise<void> {
+  const { data, error } = await supabase.from("suppressions").delete().eq("id", id).select("id");
+  if (error) throw new Error(error.message);
+  if (!data?.length) throw new Error("Only management or admins can remove someone from the list.");
+}
+
+export function listEngineRuns(limit = 14): Promise<EngineRun[]> {
+  return run<EngineRun[]>(
+    supabase.from("engine_runs").select("*").order("started_at", { ascending: false }).limit(limit),
+  ).then((r) => r ?? []);
+}
+
+/** Leads the engine created since the given time (count only). */
+export async function countEngineLeadsSince(sinceIso: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("leads")
+    .select("id", { count: "exact", head: true })
+    .eq("source", "ai_engine")
+    .gte("created_at", sinceIso);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 // ===========================================================================

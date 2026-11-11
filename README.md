@@ -129,6 +129,13 @@ React SPA (Netlify)  ──supabase-js (anon key + user JWT)──▶  Supabase 
    5. [`supabase/migrations/0005_lead_email.sql`](./supabase/migrations/0005_lead_email.sql)
       — email from the CRM: `leads.email_opt_out`, `outreach.recipient` /
       `external_id`. Then set up the `send-email` function (§ Email below).
+   6. [`supabase/migrations/0006_acquisition_engine.sql`](./supabase/migrations/0006_acquisition_engine.sql)
+      — AI Partnership Acquisition Engine foundation: 100-point qualification
+      score (replaces 0004's 10-point score), company-domain duplicate rule,
+      `lead_research`, permanent `suppressions` list, `engine_runs`, and the
+      `engine_*` functions behind the `engine-api` function
+      ([docs/ENGINE_API.md](./docs/ENGINE_API.md)). Apply before deploying a
+      frontend that includes it.
 3. *(Optional)* Run [`supabase/seed.sql`](./supabase/seed.sql) for fictional
    demo data (facilities, captains, campaigns, leads across every pipeline,
    outreach, tasks). Re-running is safe for the core rows; it will add
@@ -198,6 +205,8 @@ supabase/
   migrations/0005_lead_email.sql  email opt-out, outreach recipient / provider id
   functions/mcp-server/          Edge Function — the CRM as a Claude connector
   functions/send-email/          Edge Function — send lead emails via Resend
+  functions/engine-api/          Edge Function — REST API for the AI acquisition engine (n8n)
+  migrations/0006_acquisition_engine.sql  100-pt score, dedupe, research, suppression, engine runs
   seed.sql                       optional fictional demo data
 frontend/
   src/lib/         supabase client, db helpers, auth, query client, branding, format
@@ -250,6 +259,15 @@ outreach on the lead's timeline. Replies go to the sender's own address.
 The function only sends to addresses already saved on the lead or its
 contacts, refuses leads marked **Do not email**, and runs every database call
 with the caller's own session (RLS applies; viewers can't send).
+
+### AI engine → `engine-api` Edge Function
+The n8n workflows of the AI Partnership Acquisition Engine talk to the CRM only
+through this function. Routes, payloads and error codes: [docs/ENGINE_API.md](./docs/ENGINE_API.md).
+```bash
+npx supabase secrets set --project-ref <ref> ENGINE_API_KEY=<long random string>
+npx supabase functions deploy engine-api --project-ref <ref> --no-verify-jwt --use-api
+```
+Optional secrets: `ENGINE_MIN_SCORE` (default 65), `ENGINE_DAILY_TARGET` (default 80).
 
 ### Frontend → Netlify
 [`frontend/netlify.toml`](./frontend/netlify.toml) is preconfigured (`base =

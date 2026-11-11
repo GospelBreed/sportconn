@@ -12,6 +12,7 @@ import { FollowupBadge, TemperatureBadge } from "@/components/ui/badges";
 import { InlineEdit } from "@/components/ui/InlineEdit";
 import { LeadContacts } from "./LeadContacts";
 import { EmailComposeModal } from "./EmailComposeModal";
+import { LeadResearchTab } from "./LeadResearchTab";
 import { SponsorDealTab } from "@/features/sponsors/SponsorDealTab";
 import { SponsorDeliveryTab } from "@/features/sponsors/SponsorDeliveryTab";
 import {
@@ -41,7 +42,7 @@ import type {
   Temperature,
 } from "@/types";
 
-type Tab = "overview" | "deal" | "delivery" | "timeline" | "outreach" | "tasks";
+type Tab = "overview" | "research" | "deal" | "delivery" | "timeline" | "outreach" | "tasks";
 
 export function LeadSlideOver({
   leadId,
@@ -74,6 +75,9 @@ export function LeadSlideOver({
               onChange={setTab}
               tabs={[
                 { key: "overview", label: "Overview" },
+                ...(lead.pipeline === "sponsor" || lead.pipeline === "strategic_partnership" || lead.research.length > 0
+                  ? [{ key: "research" as const, label: "Research", count: lead.research.length || undefined }]
+                  : []),
                 ...(lead.pipeline === "sponsor"
                   ? [
                       { key: "deal" as const, label: "Deal" },
@@ -92,6 +96,7 @@ export function LeadSlideOver({
           </div>
           <div className="flex-1 overflow-y-auto p-5">
             {tab === "overview" && <Overview lead={lead} />}
+            {tab === "research" && <LeadResearchTab lead={lead} />}
             {tab === "deal" && <SponsorDealTab lead={lead} />}
             {tab === "delivery" && <SponsorDeliveryTab lead={lead} />}
             {tab === "timeline" && <Timeline lead={lead} />}
@@ -312,12 +317,22 @@ function Overview({ lead }: { lead: LeadDetail }) {
             <Icon name="building" size={14} /> Organization
           </h3>
           <InlineEdit label="Company" value={lead.company_name ?? ""} disabled={!canWrite} onSave={(v) => save({ company_name: v.trim() || null })} />
+          <InlineEdit
+            label="Website / domain"
+            value={lead.company_domain ?? lead.website ?? ""}
+            placeholder="e.g. kuda.com"
+            disabled={!canWrite}
+            onSave={(v) => save({ company_domain: v.trim() || null, website: v.trim() || null })}
+          />
           <dl className="mt-2 space-y-1.5 text-xs">
             <Row label="Location" value={[lead.location_city, lead.location_country].filter(Boolean).join(", ")} />
             <Row label="Priority" value={PRIORITY_META[lead.priority].label} />
             {lead.pipeline === "sponsor" && <Row label="Sponsorship category" value={lead.sponsorship_category} />}
-            {lead.pipeline === "sponsor" && (
-              <Row label="Prospect score" value={lead.prospect_score != null ? `${lead.prospect_score}/10 · ${prospectTier(lead.prospect_score)?.tier}` : "Not scored"} />
+            {(lead.pipeline === "sponsor" || lead.prospect_score != null) && (
+              <Row
+                label="Qualification score"
+                value={lead.prospect_score != null ? `${lead.prospect_score}/100 · ${prospectTier(lead.prospect_score)?.label}` : "Not scored"}
+              />
             )}
             {lead.pipeline === "investor" && <Row label="Investor type" value={lead.investor_type} />}
             {lead.pipeline === "investor" && <Row label="Ticket size" value={lead.ticket_size ? formatMoney(lead.ticket_size, lead.currency) : null} />}

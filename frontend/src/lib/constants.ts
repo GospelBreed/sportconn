@@ -11,6 +11,7 @@ import type {
   PaymentStatus,
   RenewalStatus,
   ScoreField,
+  SuppressionReason,
   VendorRegistration,
   FollowUpType,
   LeadSource,
@@ -83,22 +84,41 @@ export const PRIORITY_META: Record<Priority, { label: string; badge: string; dot
   low: { label: "Low", badge: "bg-line text-muted", dot: "bg-muted" },
 };
 
-// ---------- Sponsor execution (0004) ----------
-export const SCORE_FACTORS: { field: ScoreField; label: string }[] = [
-  { field: "score_sports_fans", label: "Strong connection to sports fans" },
-  { field: "score_audience_fit", label: "Clear fit with SportConn's audience" },
-  { field: "score_budget", label: "Plausible marketing or activation budget" },
-  { field: "score_decision_maker", label: "Identifiable decision-maker or warm introduction" },
-  { field: "score_opportunity", label: "Clear campaign opportunity or business objective" },
+// ---------- Qualification score (0006 — Partnership Acquisition Engine) ----------
+export const SCORE_FACTORS: { field: ScoreField; label: string; max: number; key: string }[] = [
+  { field: "score_audience", key: "audience", label: "Audience alignment", max: 25 },
+  { field: "score_marketing", key: "marketing", label: "Marketing and sponsorship potential", max: 20 },
+  { field: "score_partnership_evidence", key: "partnership_evidence", label: "Partnership activity evidence", max: 15 },
+  { field: "score_collaboration", key: "collaboration", label: "Identifiable collaboration opportunity", max: 15 },
+  { field: "score_decision_access", key: "decision_access", label: "Decision-maker accessibility", max: 15 },
+  { field: "score_contact_quality", key: "contact_quality", label: "Contact information quality", max: 10 },
 ];
 
-/** SOP §4: 8–10 = A (contact first), 5–7 = B (research further), 0–4 = C (defer). */
+export const QUALIFY_MIN = 65;
+export const PRIORITY_MIN = 80;
+
+/** Engine blueprint: ≥ 80 priority, 65–79 qualified, < 65 below the threshold. */
 export function prospectTier(score?: number | null): { tier: "A" | "B" | "C"; label: string; badge: string } | null {
   if (score === null || score === undefined) return null;
-  if (score >= 8) return { tier: "A", label: "Priority A — contact first", badge: "bg-success/12 text-success" };
-  if (score >= 5) return { tier: "B", label: "Priority B — research further", badge: "bg-warning/14 text-warning" };
-  return { tier: "C", label: "Priority C — defer", badge: "bg-line text-muted" };
+  if (score >= PRIORITY_MIN) return { tier: "A", label: "Priority — contact first", badge: "bg-success/12 text-success" };
+  if (score >= QUALIFY_MIN) return { tier: "B", label: "Qualified", badge: "bg-warning/14 text-warning" };
+  return { tier: "C", label: "Below the 65 threshold", badge: "bg-line text-muted" };
 }
+
+export const SUPPRESSION_REASONS: SuppressionReason[] = [
+  "unsubscribed", "opt_out_request", "bounced", "complained", "do_not_contact", "manual", "other",
+];
+export const SUPPRESSION_REASON_LABEL: Record<SuppressionReason, string> = {
+  unsubscribed: "Unsubscribed",
+  opt_out_request: "Asked not to be contacted",
+  bounced: "Email bounced",
+  complained: "Marked as spam",
+  do_not_contact: "Do not contact",
+  manual: "Added manually",
+  other: "Other",
+};
+
+// ---------- Sponsor execution (0004) ----------
 
 export const CONTRACT_STATUSES: ContractStatus[] = ["not_started", "drafting", "sent", "signed"];
 export const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {
@@ -182,6 +202,7 @@ export const LEAD_SOURCE_LABEL: Record<LeadSource, string> = {
   facility_outreach: "Facility Outreach",
   organic: "Organic",
   import: "Imported",
+  ai_engine: "AI Partnership Engine", // set only by the engine API, not offered when adding a lead
   other: "Other",
 };
 

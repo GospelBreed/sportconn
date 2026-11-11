@@ -131,6 +131,10 @@ supabase/
                              approvals, deliverables, lead_contacts, scorecard RPC,
                              sponsor Won gate (signed + paid + price approval)
   migrations/0005_lead_email.sql  email opt-out + outreach recipient/provider id
+  migrations/0006_acquisition_engine.sql  100-pt score, company-domain dedupe,
+                             lead_research, suppressions, engine_runs, engine_* RPCs
+  functions/engine-api/      Edge Function — REST API for the AI acquisition engine
+                             (bearer ENGINE_API_KEY; see docs/ENGINE_API.md)
   functions/send-email/      Edge Function — lead emails via Resend (runs as the
                              caller; logs outbound outreach)
   functions/mcp-server/      Edge Function — the CRM as a Claude connector

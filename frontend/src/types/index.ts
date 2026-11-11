@@ -129,6 +129,7 @@ export type LeadSource =
   | "facility_outreach"
   | "organic"
   | "import"
+  | "ai_engine"
   | "other";
 
 export type Temperature = "hot" | "warm" | "cold" | "at_risk";
@@ -284,13 +285,22 @@ export interface Lead {
   budget_status?: string | null;
   proposal_status?: string | null;
 
-  // sponsor execution (0004)
-  score_sports_fans?: number | null;
-  score_audience_fit?: number | null;
-  score_budget?: number | null;
-  score_decision_maker?: number | null;
-  score_opportunity?: number | null;
+  // 100-point qualification score (0006) — prospect_score is generated
+  score_audience?: number | null;
+  score_marketing?: number | null;
+  score_partnership_evidence?: number | null;
+  score_collaboration?: number | null;
+  score_decision_access?: number | null;
+  score_contact_quality?: number | null;
   prospect_score?: number | null;
+
+  // company identity + engine provenance (0006); company_key is generated
+  company_domain?: string | null;
+  company_key?: string | null;
+  last_researched_at?: string | null;
+  engine_run_id?: string | null;
+
+  // sponsor execution (0004)
   fit_reason?: string | null;
   package_id?: string | null;
   expected_decision_date?: string | null;
@@ -349,6 +359,74 @@ export interface LeadDetail extends Lead {
   contacts: LeadContact[];
   approvals: DealApproval[];
   deliverables: SponsorDeliverable[];
+  research: LeadResearch[];
+}
+
+// ===================== Acquisition engine (0006) =====================
+
+export interface ResearchSource {
+  url: string;
+  title?: string | null;
+  note?: string | null;
+}
+
+export interface LeadResearch {
+  id: string;
+  lead_id: string;
+  research_date: string;
+  company_overview?: string | null;
+  target_audience?: string | null;
+  marketing_activities: unknown[];
+  sponsorship_history: unknown[];
+  business_objective?: string | null;
+  partnership_gap?: string | null;
+  sportconn_opportunity?: string | null;
+  potential_value?: string | null;
+  verified_facts: unknown[];
+  assumptions: unknown[];
+  sources: (ResearchSource | string)[];
+  qualification_score?: number | null;
+  score_breakdown: Record<string, number>;
+  origin: "ai_engine" | "manual";
+  engine_run_id?: string | null;
+  created_at: string;
+  author?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+export type SuppressionReason =
+  | "unsubscribed"
+  | "opt_out_request"
+  | "bounced"
+  | "complained"
+  | "do_not_contact"
+  | "manual"
+  | "other";
+
+export interface Suppression {
+  id: string;
+  email?: string | null;
+  domain?: string | null;
+  reason: SuppressionReason;
+  source: string;
+  note?: string | null;
+  lead_id?: string | null;
+  created_at: string;
+  author?: Pick<AppUser, "id" | "full_name"> | null;
+}
+
+export interface EngineRun {
+  id: string;
+  run_date: string;
+  status: "running" | "completed" | "partial" | "failed";
+  target?: number | null;
+  created_count: number;
+  updated_count: number;
+  duplicate_count: number;
+  rejected_count: number;
+  notes?: string | null;
+  errors: unknown[];
+  started_at: string;
+  finished_at?: string | null;
 }
 
 // ===================== Sponsor execution (0004) =====================
@@ -367,13 +445,14 @@ export type ApprovalType =
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type DeliverableStatus = "planned" | "in_progress" | "delivered" | "cancelled";
 
-/** The five SOP qualification factors, each scored 0–2. */
+/** The six qualification factors of the 100-point score (0006). */
 export type ScoreField =
-  | "score_sports_fans"
-  | "score_audience_fit"
-  | "score_budget"
-  | "score_decision_maker"
-  | "score_opportunity";
+  | "score_audience"
+  | "score_marketing"
+  | "score_partnership_evidence"
+  | "score_collaboration"
+  | "score_decision_access"
+  | "score_contact_quality";
 
 export interface SponsorPackage {
   id: string;

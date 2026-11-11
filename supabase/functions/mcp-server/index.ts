@@ -68,7 +68,8 @@ const LEAD_UPDATE_FIELDS = [
   "priority", "temperature", "expected_value", "currency", "probability", "notes",
   "next_action", "next_follow_up_at", "next_follow_up_type",
   "sponsorship_category", "decision_maker", "budget_status", "proposal_status",
-  "score_sports_fans", "score_audience_fit", "score_budget", "score_decision_maker", "score_opportunity",
+  "score_audience", "score_marketing", "score_partnership_evidence", "score_collaboration",
+  "score_decision_access", "score_contact_quality", "company_domain",
   "fit_reason", "package_id", "expected_decision_date", "contract_status", "contract_value",
   "invoice_number", "payment_status", "payment_due_date", "amount_received", "vendor_registration",
   "renewal_status", "renewal_due_date", "campaign_start_date", "campaign_end_date",
@@ -223,7 +224,7 @@ const TOOLS = [
   {
     name: "update_lead",
     description:
-      "Update fields on a lead (not its stage — use update_lead_stage). Sponsor deals: scores are 0–2 each; a deal can't be marked Won until contract_status='signed', payment_status='paid' and any price below the package list price has an approved pricing exception/discount.",
+      "Update fields on a lead (not its stage — use update_lead_stage). 100-point qualification score, factor maxima: score_audience 25, score_marketing 20, score_partnership_evidence 15, score_collaboration 15, score_decision_access 15, score_contact_quality 10 (≥65 qualifies, ≥80 priority). Sponsor deals: a deal can't be marked Won until contract_status='signed', payment_status='paid' and any price below the package list price has an approved pricing exception/discount.",
     inputSchema: {
       type: "object",
       properties: {

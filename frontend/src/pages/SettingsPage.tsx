@@ -10,6 +10,7 @@ import { ROLE_BADGE, ROLE_LABEL } from "@/lib/constants";
 import { AccessGovernance } from "@/features/settings/AccessGovernance";
 import { PipelineSettings } from "@/features/settings/PipelineSettings";
 import { SponsorSettings } from "@/features/settings/SponsorSettings";
+import { SuppressionSettings } from "@/features/settings/SuppressionSettings";
 
 export function SettingsPage() {
   const { user, updateLocalUser } = useAuth();
@@ -84,6 +85,7 @@ export function SettingsPage() {
 
         <PipelineSettings />
         <SponsorSettings />
+        <SuppressionSettings />
         <AccessGovernance />
       </div>
     </div>
