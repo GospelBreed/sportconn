@@ -210,6 +210,9 @@ engine, decides whether the address may be emailed.
 `lawful_basis`: `legitimate_interest`, `consent`, `existing_relationship`,
 `none_recorded`. `verification.status`: `valid`, `risky`, `invalid`,
 `unknown`, `unverified` — use a real verification service, never a guess.
+Leave `verification` out to keep whatever is stored (0011). With
+`NEVERBOUNCE_API_KEY` set, the CRM checks every recorded address itself — see
+[Automatic address checks](#automatic-address-checks-neverbounce-migration-0011).
 
 → `{"ok":true,"email":"ada@kuda.com","eligibility":{"status":"eligible","reason":"Verified, source and lawful basis recorded"}}`
 
@@ -317,8 +320,12 @@ and hours (Lagos), and not while paused.
 
 ```json
 { "ok": true, "sent": 3, "failed": 0, "paused": false, "outside_window": false,
-  "budget_reached": false, "results": [ { "id": "…", "ok": true, "provider_id": "…" } ] }
+  "budget_reached": false, "released": 1,
+  "verification": { "enabled": true, "checked": 5, "failed": 0, "released": 1, "cancelled": 0 },
+  "results": [ { "id": "…", "ok": true, "provider_id": "…" } ] }
 ```
+Before sending, each run checks up to 5 recorded addresses with NeverBounce and
+approves held AI drafts whose checks now pass (see below).
 
 Each email is plain text from "<approver's name> at SportConn", Reply-To the
 approver, ending with a personal opt-out line ("If this isn't relevant, just
@@ -388,7 +395,7 @@ connector can't send directly.
 
 | Action | Does |
 |---|---|
-| `record_contact_source` | Same as `POST /contacts/eligibility`. Do it before queueing, or the email waits in review as "not eligible". |
+| `record_contact_source` | Same as `POST /contacts/eligibility`, and the address is checked with NeverBounce on the spot (result in `verification` / `eligibility`); a caller-supplied `verification` is ignored. Do it before queueing, or the email waits in review as "not eligible". |
 | `queue_email` | `lead_id, to_email, to_name?, subject (≤150), body_text (≤5,000), sequence_step 1\|2, reply_to_email_id (step 2), engine_run_id?`. Returns `email_id`, `status` (`queued` or `to_review` + `blocker`), estimated `scheduled_for`, `position_in_queue`. |
 | `list_email_events` | `types?, since?, lead_id?, limit?, cursor?`. Replies (quoted history removed), hard/soft bounces, problems, sent, queued, to_review, rejected, cancelled, plus a `summary` (sent today, limit, queued, sends and bounces over the last 5 business days). |
 | `set_email_opt_out` | Marks a lead and/or address Do not email and cancels anything queued to it. Only management can reverse it, in the CRM. |
@@ -408,3 +415,26 @@ sending, default 4 then 7 days); the 14-day gap applies to new conversations
 only. Not supported: `send_after` — emails go in the next open sending window.
 The per-company limit and the daily limit never refuse an email: it waits for
 the next batch or day.
+
+## Automatic address checks (NeverBounce, migration 0011)
+
+Set `NEVERBOUNCE_API_KEY` as a Supabase secret and every address recorded in
+contact eligibility — by the connector, the engine API or a person on the lead
+page — is checked by the CRM itself. Nobody runs a check or types a result.
+
+| NeverBounce says | Stored as | What happens |
+|---|---|---|
+| `valid` | Verified — valid | Eligible (with a source and lawful basis). Held AI drafts to it are approved (review off) and go out in the next sending window. |
+| `catchall` | Risky | Waits in Email review: the company's server accepts every address, so the mailbox can't be confirmed. A person approves it. |
+| `invalid`, `disposable` | Invalid | Never emailed. AI drafts to it are cancelled and the lead's timeline says why. |
+| `unknown` | Couldn't verify | Checked again a day later, up to 3 times; then a person decides. |
+| (check failed) | unchanged | Retried an hour later, up to 3 times. A refused key or empty credit balance stops that round. |
+
+Where checks run: `record_contact_source` (immediately, so a `queue_email`
+straight after can send) and `POST /run` (up to 5 addresses per run — anything
+recorded another way, plus retries). Not checked: generic inboxes, do-not-contact
+addresses, and addresses with a management decision. One credit per check;
+a re-recorded source keeps its result, so an address is not paid for twice.
+
+Held drafts are released only when review is switched off, a default sender is
+set, nothing else blocks them, and no person has handled them yet.

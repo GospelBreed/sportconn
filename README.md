@@ -294,6 +294,11 @@ Then: in Resend → Webhooks, point `email.*` events at
 secret is `RESEND_WEBHOOK_SECRET`); and schedule `POST …/email-engine/run`
 (Bearer `ENGINE_API_KEY`) every 15 minutes from n8n or Supabase Cron.
 
+Automatic address checks (migration 0011): set
+`npx supabase secrets set --project-ref <ref> NEVERBOUNCE_API_KEY=<key>` and deploy
+`email-engine` and `mcp-server` again. Every recorded address is then checked with
+NeverBounce; see [docs/ENGINE_API.md](./docs/ENGINE_API.md#automatic-address-checks-neverbounce-migration-0011).
+
 Reply capture (optional but recommended): switch on **receiving** for the sending
 domain in Resend (it gives an MX record to add at your DNS host), add
 `email.received` to the webhook, give `RESEND_API_KEY` Full access, and set

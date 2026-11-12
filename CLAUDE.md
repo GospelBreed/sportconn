@@ -76,7 +76,7 @@ and all UI primitives.
     Any migration that creates or replaces a function ends with
     `revoke execute on function … from public, anon;` plus the right `grant`
     (`authenticated` for staff-facing RPCs, `service_role` only for engine /
-    sender functions). 0009 locked down everything up to that point; 0010 follows the rule.
+    sender functions). 0009 locked down everything up to that point; 0010 and 0011 follow the rule.
 
 ## Roles
 `super_admin` · `admin` · `management` · `business_development` · `sales` ·
@@ -152,6 +152,10 @@ supabase/
                              caller; logs outbound outreach)
   migrations/0010_connector_email.sql  generic-inbox + nurture send rules, Contacted
                              on first send (connector email actions use them)
+  migrations/0011_email_verification.sql  automatic NeverBounce address checks,
+                             held AI drafts released once checks pass
+  functions/_shared/         neverbounce.ts — NeverBounce client used by
+                             email-engine and mcp-server (deno test neverbounce_test.ts)
   functions/mcp-server/      Edge Function — the CRM as a Claude connector (incl.
                              queue_email / list_email_events; helpers in email.ts)
   functions/manage-users/    Edge Function — privileged user management

@@ -2,10 +2,13 @@
 //
 // Three jobs, each with its own authentication:
 //
-//   POST /run                 Send the next batch of APPROVED emails within the
-//                             daily budget, per-domain limit and sending hours
-//                             (email_settings). Called on a schedule (n8n or
-//                             Supabase Cron, every 10–15 min).
+//   POST /run                 First checks up to 5 recorded addresses with
+//                             NeverBounce (when NEVERBOUNCE_API_KEY is set) and
+//                             approves AI drafts whose checks now pass (review
+//                             off). Then sends the next batch of APPROVED emails
+//                             within the daily budget, per-domain limit and
+//                             sending hours (email_settings). Called on a
+//                             schedule (n8n or Supabase Cron, every 10–15 min).
 //                             Auth: Bearer ENGINE_API_KEY.
 //
 //   POST /webhooks/resend     Resend events. Delivery events (delivered,
@@ -34,11 +37,13 @@
 //   supabase secrets set RESEND_WEBHOOK_SECRET=whsec_... APP_URL=https://<crm address>
 //   supabase functions deploy email-engine --no-verify-jwt
 // Uses RESEND_API_KEY, EMAIL_FROM (set for send-email) and ENGINE_API_KEY.
+// Address checks: supabase secrets set NEVERBOUNCE_API_KEY=... (no key = no checks).
 // Reply capture: REPLY_DOMAIN (a Resend receiving domain, e.g. contact.sportconn.com);
 // RESEND_API_KEY then needs permission to read received emails (Full access).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { forwardText, fromFor, htmlToText, replyAddress, safeEqual, verifySvix, withFooter } from "./lib.ts";
+import { checkAddress } from "../_shared/neverbounce.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -48,8 +53,10 @@ const EMAIL_FROM = Deno.env.get("EMAIL_FROM") ?? "";
 const WEBHOOK_SECRET = Deno.env.get("RESEND_WEBHOOK_SECRET") ?? "";
 const APP_URL = (Deno.env.get("APP_URL") ?? "https://sportconn-crm.netlify.app").replace(/\/+$/, "");
 const REPLY_DOMAIN = (Deno.env.get("REPLY_DOMAIN") ?? "").trim().toLowerCase();
+const NEVERBOUNCE_API_KEY = (Deno.env.get("NEVERBOUNCE_API_KEY") ?? "").trim();
 
 const MAX_BATCH = 25;
+const VERIFY_PER_RUN = 5;
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 const db = admin.schema("sportconn");
@@ -91,6 +98,18 @@ async function runBatch(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as Json;
   const max = Math.min(Math.max(Number(body.max ?? 10) || 10, 1), MAX_BATCH);
+
+  // 1) check recorded addresses, 2) approve drafts whose checks now pass, 3) send.
+  // Steps 1–2 never stop the sending step.
+  const verification = await verifyPending();
+  let released = 0;
+  try {
+    const { data: n, error: relErr } = await db.rpc("email_release_ready_drafts", { p_email: null, p_max: 50 });
+    if (relErr) throw relErr;
+    released = Number(n ?? 0);
+  } catch (e) {
+    console.error("release drafts failed", e instanceof Error ? e.message : e);
+  }
 
   const { data, error } = await db.rpc("email_claim_batch", { p_max: max });
   if (error) throw error;
@@ -141,10 +160,49 @@ async function runBatch(req: Request) {
     paused: claim.paused ?? false,
     outside_window: claim.outside_window ?? false,
     budget_reached: claim.budget_reached ?? false,
+    verification,
+    released,
     sent: results.filter((r) => r.ok).length,
     failed: results.filter((r) => !r.ok).length,
     results,
   });
+}
+
+/**
+ * Check up to VERIFY_PER_RUN recorded addresses with NeverBounce (migration
+ * 0011). Skipped when NEVERBOUNCE_API_KEY isn't set. A refused key or empty
+ * credit balance stops the round; the addresses are retried in a later run.
+ */
+async function verifyPending(): Promise<Json> {
+  if (!NEVERBOUNCE_API_KEY) return { enabled: false };
+  try {
+    const { data, error } = await db.rpc("email_verify_claim", { p_max: VERIFY_PER_RUN });
+    if (error) throw error;
+    const emails = ((data ?? []) as unknown[]).map(String);
+    const out: Json = { enabled: true, checked: 0, failed: 0, released: 0, cancelled: 0 };
+    for (const email of emails) {
+      const check = await checkAddress(NEVERBOUNCE_API_KEY, email);
+      const { data: rec, error: recErr } = await db.rpc("email_verify_record", {
+        p_email: email,
+        p_result: check.ok ? check.result : null,
+        p_error: check.ok ? null : check.error,
+      });
+      if (recErr) throw recErr;
+      if (check.ok) {
+        out.checked = Number(out.checked) + 1;
+        out.released = Number(out.released) + Number((rec as Json)?.released ?? 0);
+        out.cancelled = Number(out.cancelled) + Number((rec as Json)?.cancelled ?? 0);
+      } else {
+        out.failed = Number(out.failed) + 1;
+        out.error = check.error;
+        if (check.fatal) break;
+      }
+    }
+    return out;
+  } catch (e) {
+    console.error("verification failed", e instanceof Error ? e.message : e);
+    return { enabled: true, error: "Address checks didn't run this time" };
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -19,12 +19,14 @@
 // Deploy:
 //   supabase secrets set MCP_AUTH_TOKEN=<random-token>
 //   supabase functions deploy mcp-server --no-verify-jwt
+// Address checks in record_contact_source: NEVERBOUNCE_API_KEY (shared with email-engine).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import {
   businessDaysStart, EMAIL_RE, estimateSendTime, isGenericInbox, lagosMidnight, mapQueueError, type SendSettings,
   stripQuoted, toLagosIso, UUID_RE,
 } from "./email.ts";
+import { checkAddress } from "../_shared/neverbounce.ts";
 
 // A refusal the caller should act on: returned as {"error": code, "message": …}.
 class ToolError extends Error {
@@ -36,6 +38,7 @@ class ToolError extends Error {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const MCP_AUTH_TOKEN = Deno.env.get("MCP_AUTH_TOKEN")!;
+const NEVERBOUNCE_API_KEY = (Deno.env.get("NEVERBOUNCE_API_KEY") ?? "").trim();
 
 const CONNECTOR_EMAIL = "claude-connector@sportconn.internal";
 
@@ -350,7 +353,7 @@ const TOOLS = [
   {
     name: "record_contact_source",
     description:
-      "Record where an email address came from and its lawful basis, before queueing an email to it. The CRM (not the caller) then decides eligibility: only 'eligible' addresses are sent automatically; others wait in Email review. verification.status must come from a real email-verification service — use 'unverified' if none was run.",
+      "Record where an email address came from and its lawful basis, before queueing an email to it. The CRM then checks the address with NeverBounce itself and decides eligibility (the result is in the response): only 'eligible' addresses are sent automatically; others wait in Email review. Leave 'verification' out — the CRM's own check is used, and a caller-supplied result is ignored.",
     inputSchema: {
       type: "object",
       properties: {
@@ -460,10 +463,37 @@ async function countMessages(filter: (q: any) => any): Promise<number> {
 
 async function recordContactSource(a: Record<string, unknown>) {
   const actor = await getConnectorUserId();
-  const { data, error } = await db.rpc("engine_set_eligibility", { p: a, p_actor: actor });
+  // With NeverBounce set up the CRM checks addresses itself and never trusts a
+  // caller-supplied result; leaving "verification" out keeps any stored check.
+  const input = { ...a };
+  if (NEVERBOUNCE_API_KEY) delete input.verification;
+  const { data, error } = await db.rpc("engine_set_eligibility", { p: input, p_actor: actor });
   if (error) throw error;
   if (!data?.ok) throw new ToolError(data?.error ?? "invalid_input", data?.message ?? "Couldn't record the source");
-  return data;
+
+  // Check the address now, so a queue_email right after this can go out without review.
+  const email = String(data.email ?? "");
+  if (!NEVERBOUNCE_API_KEY || !email || isGenericInbox(email)) return data;
+  const { data: row } = await db.from("contact_eligibility")
+    .select("verification_status, verification_attempts, override").eq("email", email).maybeSingle();
+  const due = row?.verification_status === "unverified" ||
+    (row?.verification_status === "unknown" && Number(row?.verification_attempts ?? 0) < 3);
+  if (!row || row.override || !due) return data;
+
+  const check = await checkAddress(NEVERBOUNCE_API_KEY, email);
+  const { data: rec, error: recErr } = await db.rpc("email_verify_record", {
+    p_email: email,
+    p_result: check.ok ? check.result : null,
+    p_error: check.ok ? null : check.error,
+  });
+  if (recErr) throw recErr;
+  return {
+    ...data,
+    eligibility: rec?.eligibility ?? data.eligibility,
+    verification: check.ok
+      ? { provider: "NeverBounce", result: check.result, status: rec?.verification_status }
+      : { provider: "NeverBounce", checked: false, note: `${check.error}. The CRM will check it again automatically.` },
+  };
 }
 
 async function queueEmail(a: Record<string, unknown>) {
