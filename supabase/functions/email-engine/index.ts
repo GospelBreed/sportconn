@@ -8,8 +8,10 @@
 //                             off). Then sends the next batch of APPROVED emails
 //                             within the daily budget, per-domain limit and
 //                             sending hours (email_settings). Called on a
-//                             schedule (n8n or Supabase Cron, every 10–15 min).
-//                             Auth: Bearer ENGINE_API_KEY.
+//                             schedule: Supabase Cron every 15 min (migration
+//                             0012), or n8n.
+//                             Auth: Bearer ENGINE_API_KEY, or the cron token
+//                             kept in Supabase Vault (0012).
 //
 //   POST /webhooks/resend     Resend events. Delivery events (delivered,
 //                             bounced, complained, opened…): hard bounces and
@@ -90,10 +92,22 @@ interface Claimed {
   sender_email: string | null;
 }
 
+/** /run accepts ENGINE_API_KEY (n8n, scripts) or the Supabase Cron token kept in Vault (migration 0012). */
+async function runAuthorized(token: string): Promise<boolean> {
+  if (!token) return false;
+  if (ENGINE_API_KEY && safeEqual(token, ENGINE_API_KEY)) return true;
+  if (token.length < 32) return false;
+  const { data, error } = await db.rpc("email_engine_cron_token_ok", { p_token: token });
+  if (error) {
+    console.error("cron token check failed", error.message);
+    return false;
+  }
+  return data === true;
+}
+
 async function runBatch(req: Request) {
-  if (!ENGINE_API_KEY) return fail(503, "not_configured", "ENGINE_API_KEY is not set");
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token || !safeEqual(token, ENGINE_API_KEY)) return fail(401, "unauthorized", "Invalid or missing API key");
+  if (!(await runAuthorized(token))) return fail(401, "unauthorized", "Invalid or missing API key");
   if (!RESEND_API_KEY || !EMAIL_FROM) return fail(503, "not_configured", "RESEND_API_KEY and EMAIL_FROM must be set");
 
   const body = (await req.json().catch(() => ({}))) as Json;

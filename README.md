@@ -292,7 +292,9 @@ npx supabase functions deploy email-engine --project-ref <ref> --no-verify-jwt -
 Then: in Resend → Webhooks, point `email.*` events at
 `https://<ref>.supabase.co/functions/v1/email-engine/webhooks/resend` (its signing
 secret is `RESEND_WEBHOOK_SECRET`); and schedule `POST …/email-engine/run`
-(Bearer `ENGINE_API_KEY`) every 15 minutes from n8n or Supabase Cron.
+(Bearer `ENGINE_API_KEY`) every 15 minutes. Migration `0012_email_cron.sql` does
+this inside Supabase (Supabase Cron + a token it keeps in Vault — nothing to copy);
+after running it, redeploy `email-engine` and switch off any n8n send schedule.
 
 Automatic address checks (migration 0011): set
 `npx supabase secrets set --project-ref <ref> NEVERBOUNCE_API_KEY=<key>` and deploy

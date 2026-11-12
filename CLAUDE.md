@@ -154,6 +154,8 @@ supabase/
                              on first send (connector email actions use them)
   migrations/0011_email_verification.sql  automatic NeverBounce address checks,
                              held AI drafts released once checks pass
+  migrations/0012_email_cron.sql  Supabase Cron calls email-engine /run every
+                             15 min (token in Vault; no n8n needed for sending)
   functions/_shared/         neverbounce.ts — NeverBounce client used by
                              email-engine and mcp-server (deno test neverbounce_test.ts)
   functions/mcp-server/      Edge Function — the CRM as a Claude connector (incl.

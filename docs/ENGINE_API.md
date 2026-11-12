@@ -312,9 +312,10 @@ Base: `https://xvuifgbdcfhezbcevskl.supabase.co/functions/v1/email-engine`
 
 ### `POST /run` — send the next batch
 Auth: the same `Authorization: Bearer <ENGINE_API_KEY>`. Body `{"max": 10}`
-(≤ 25). Call it on a schedule — an n8n **Schedule Trigger** every 15 minutes
-→ HTTP Request `POST …/email-engine/run` with the "SportConn Engine API"
-credential. It sends only **approved** emails, and only within the limits in
+(≤ 25). Supabase Cron calls it every 15 minutes (migration 0012: job
+`sportconn-email-engine-run`, authenticated with a token kept in Supabase Vault),
+so no outside scheduler is needed. n8n or a script can still call it with
+`ENGINE_API_KEY`; two callers can't send an email twice (claimed rows are locked). It sends only **approved** emails, and only within the limits in
 **Settings → Email sending**: daily total, per company per day, sending days
 and hours (Lagos), and not while paused.
 
