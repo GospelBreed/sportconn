@@ -1004,6 +1004,15 @@ async function callTool(name: string, args: Record<string, unknown>) {
 // ---------------------------------------------------------------------------
 // JSON-RPC / MCP request handling
 // ---------------------------------------------------------------------------
+/** Database (PostgREST) errors are plain objects, not Error instances — keep their message. */
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string") {
+    return (e as { message: string }).message;
+  }
+  return "Tool error";
+}
+
 function rpcResult(id: unknown, result: unknown) {
   return { jsonrpc: "2.0", id, result };
 }
@@ -1089,7 +1098,7 @@ Deno.serve(async (req) => {
                 type: "text",
                 text: e instanceof ToolError
                   ? JSON.stringify({ error: e.code, message: e.message, ...e.extra })
-                  : e instanceof Error ? e.message : "Tool error",
+                  : errorMessage(e),
               }],
               isError: true,
             }),
@@ -1104,7 +1113,7 @@ Deno.serve(async (req) => {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   } catch (e) {
-    return new Response(JSON.stringify(rpcError(id, -32603, e instanceof Error ? e.message : "Internal error")), {
+    return new Response(JSON.stringify(rpcError(id, -32603, errorMessage(e))), {
       status: 500,
       headers: { ...CORS, "Content-Type": "application/json" },
     });
