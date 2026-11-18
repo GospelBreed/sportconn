@@ -447,6 +447,12 @@ Turns the Sponsor pipeline into the Sponsorship Acquisition SOP
 - **Dashboard**: `get_engine_dashboard(from, to)` (authenticated) — Engine
   dashboard page and `engine-api GET /dashboard`.
 - **Per-company limit** in `email_claim_batch` skips `is_free_email_domain()`.
+- **Personal addresses (0013)**: `email_settings.auto_send_personal_addresses`
+  (default off). Off → `email_eligibility` holds every free-provider address for
+  a person. On → treated like a company address (still needs a passed check,
+  source and lawful basis). Toggled in Settings → Email sending by management/
+  admins; each change is written to `audit_log` (`email.settings.personal_addresses`).
+  Waiting drafts are released by the next `/run` via `email_release_ready_drafts`.
 
 ## 4. Row Level Security
 
