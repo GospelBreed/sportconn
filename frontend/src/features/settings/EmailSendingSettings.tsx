@@ -134,6 +134,23 @@ export function EmailSendingSettings() {
             </span>
           </span>
         </label>
+        <label className="flex items-start gap-2 text-sm text-body">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 accent-primary"
+            checked={form.auto_send_personal_addresses ?? false}
+            disabled={!canApprove || form.auto_send_personal_addresses === undefined}
+            onChange={(e) => setForm({ ...form, auto_send_personal_addresses: e.target.checked })}
+          />
+          <span>
+            Send to personal addresses (Gmail, Yahoo…) without a person's approval
+            <span className="block text-xs text-muted">
+              {form.auto_send_personal_addresses === undefined
+                ? "Needs migration 0013."
+                : "Off: every personal address waits in Email review. On: it is sent like a company address, but only once it passes the address check and its source and lawful basis are recorded. A personal address belongs to an individual, so keep those records accurate. Changes are recorded in the audit log."}
+            </span>
+          </span>
+        </label>
         <Field label="Default sender (for automatically approved emails)">
           <Select
             value={form.default_sender_id ?? ""}

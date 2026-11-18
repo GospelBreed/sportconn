@@ -503,6 +503,8 @@ export interface EmailSettings {
   require_review: boolean;
   default_sender_id?: string | null;
   sending_paused: boolean;
+  /** 0013: personal addresses (gmail.com…) need no manual approval when true. Absent before 0013. */
+  auto_send_personal_addresses?: boolean;
   max_followups: number;
   followup_1_after_days: number;
   followup_2_after_days: number;
